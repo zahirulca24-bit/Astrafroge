@@ -1,0 +1,125 @@
+"""Scanner Engine Runtime API routes."""
+
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.api.v1.dependencies import get_scanner_service
+from app.core.security import MutationAuthorization, authorize_mutation
+from app.schemas.scanner import (
+    CandidateLifecycle,
+    ScannerCandidateList,
+    ScannerCandidateSummary,
+    ScannerDirection,
+    ScannerRunSummary,
+    ScannerSetup,
+    ScannerStatusResponse,
+)
+from app.services.scanner import ScannerService
+
+router = APIRouter(prefix="/scanner", tags=["scanner"])
+
+
+def _candidate_summary(service: ScannerService) -> ScannerCandidateSummary:
+    latest = service.latest_run()
+    status = service.status()
+    if latest is None:
+        return ScannerCandidateSummary(state=status.state)
+    return ScannerCandidateSummary(
+        state=status.state,
+        run_status=latest.status,
+        run_type=latest.run_type,
+        run_started_at=latest.run_started_at,
+        completed_at=latest.completed_at,
+        evaluated_symbols=latest.evaluated_symbols,
+        successful_symbols=latest.successful_symbols,
+        failed_symbols=latest.failed_symbols,
+        discovered_candidates=latest.discovered_candidates,
+        selected_candidates=latest.selected_candidates,
+        updated_candidates=latest.updated_candidates,
+        qualified_candidates=latest.qualified_candidates,
+        audits=latest.audits,
+    )
+
+
+@router.get("/status", response_model=ScannerStatusResponse)
+async def scanner_status(
+    service: ScannerService = Depends(get_scanner_service),  # noqa: B008
+) -> ScannerStatusResponse:
+    """Return honest process-scoped Scanner state."""
+
+    return service.status()
+
+
+@router.post("/start", response_model=ScannerStatusResponse)
+async def scanner_start(
+    service: ScannerService = Depends(get_scanner_service),  # noqa: B008
+    _authorization: MutationAuthorization = Depends(authorize_mutation),  # noqa: B008
+) -> ScannerStatusResponse:
+    """Enable Scanner only after operator authorization and replay protection."""
+
+    return await service.start()
+
+
+@router.post("/stop", response_model=ScannerStatusResponse)
+async def scanner_stop(
+    service: ScannerService = Depends(get_scanner_service),  # noqa: B008
+    _authorization: MutationAuthorization = Depends(authorize_mutation),  # noqa: B008
+) -> ScannerStatusResponse:
+    """Disable recurring Scanner work after an authorized mutation request."""
+
+    return await service.stop()
+
+
+@router.post("/run-now", response_model=ScannerRunSummary)
+async def scanner_run_now(
+    service: ScannerService = Depends(get_scanner_service),  # noqa: B008
+    _authorization: MutationAuthorization = Depends(authorize_mutation),  # noqa: B008
+) -> ScannerRunSummary:
+    """Run one authorized Full Universe Scan without changing ON/OFF state."""
+
+    return await service.run_now()
+
+
+@router.get("/candidates", response_model=ScannerCandidateList)
+async def scanner_candidates(
+    service: ScannerService = Depends(get_scanner_service),  # noqa: B008
+    symbol: Annotated[str | None, Query()] = None,
+    direction: Annotated[ScannerDirection | None, Query()] = None,
+    setup: Annotated[ScannerSetup | None, Query()] = None,
+    lifecycle: Annotated[CandidateLifecycle | None, Query()] = None,
+) -> ScannerCandidateList:
+    """Return filtered deterministic Scanner candidates."""
+
+    normalized_symbol = symbol.strip().upper() if symbol is not None else None
+    if normalized_symbol is not None and (
+        not normalized_symbol or not normalized_symbol.isalnum()
+    ):
+        raise HTTPException(status_code=422, detail="Invalid symbol")
+    candidates = [
+        candidate
+        for candidate in service.candidates()
+        if (normalized_symbol is None or candidate.symbol == normalized_symbol)
+        and (direction is None or candidate.direction is direction)
+        and (setup is None or candidate.setup is setup)
+        and (lifecycle is None or candidate.lifecycle is lifecycle)
+    ]
+    return ScannerCandidateList(
+        count=len(candidates),
+        candidates=candidates,
+        summary=_candidate_summary(service),
+    )
+
+
+@router.get("/runs/latest", response_model=ScannerRunSummary)
+async def scanner_latest_run(
+    service: ScannerService = Depends(get_scanner_service),  # noqa: B008
+) -> ScannerRunSummary:
+    """Return the latest Scanner run summary."""
+
+    latest = service.latest_run()
+    if latest is None:
+        raise HTTPException(status_code=404, detail="No Scanner run is available")
+    return latest

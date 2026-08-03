@@ -1,0 +1,6 @@
+{
+  "name": "AstraForge Crypto Trading Terminal",
+  "description": "Status-aware frontend for AstraForge FastAPI market data, scanner monitoring, local demo plans, and operator-controlled scanner actions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
