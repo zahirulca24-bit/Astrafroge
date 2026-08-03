@@ -38,7 +38,6 @@ services:
   - type: web
     name: astraforge-frontend
     runtime: static
-    plan: free
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
