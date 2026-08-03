@@ -3,19 +3,20 @@
  *
  * Tokens are NEVER read from VITE_* environment variables, which are inlined
  * into the production bundle and visible to every visitor. The token is kept
- * on `window` so every lazy-loaded chunk shares the same in-memory value.
+ * on `globalThis` so every lazy-loaded chunk shares the same in-memory value.
  * It is never written to localStorage, sessionStorage, cookies, or the build.
  */
 
-declare global {
-  interface Window {
-    __ASTRAFORGE_OPERATOR_TOKEN__?: string | null;
-  }
+type AstraForgeGlobal = typeof globalThis & {
+  __ASTRAFORGE_OPERATOR_TOKEN__?: string | null;
+};
+
+function tokenStore(): AstraForgeGlobal {
+  return globalThis as AstraForgeGlobal;
 }
 
 function readToken(): string | null {
-  if (typeof window === "undefined") return null;
-  const token = window.__ASTRAFORGE_OPERATOR_TOKEN__;
+  const token = tokenStore().__ASTRAFORGE_OPERATOR_TOKEN__;
   return typeof token === "string" && token.trim() ? token.trim() : null;
 }
 
@@ -25,8 +26,7 @@ export const authToken = {
   },
 
   set(token: string | null): void {
-    if (typeof window === "undefined") return;
-    window.__ASTRAFORGE_OPERATOR_TOKEN__ = token ? token.trim() : null;
+    tokenStore().__ASTRAFORGE_OPERATOR_TOKEN__ = token ? token.trim() : null;
   },
 
   isAvailable(): boolean {
