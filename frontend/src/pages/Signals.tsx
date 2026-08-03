@@ -3,6 +3,15 @@ import { useTrading } from "../store/TradingStore";
 import { GradeBadge, SymbolAvatar } from "../components/SharedComponents";
 import { SlidersHorizontal, ChartLine as LineChart } from "lucide-react";
 
+const FILTER_OPTIONS = [
+  ["All candidates", "All"],
+  ["A+ priority", "A+"],
+  ["A quality", "A"],
+  ["B+ watch", "B+ Watch"],
+  ["Long", "Long"],
+  ["Short", "Short"],
+] as const;
+
 function formatNumber(value: number, digits = 2): string {
   return Number.isFinite(value)
     ? value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })
@@ -72,14 +81,7 @@ export const Signals: React.FC = () => {
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
         <div className="flex flex-wrap items-center gap-1.5">
-          {[
-            ["All candidates", "All"],
-            ["A+ priority", "A+"],
-            ["A quality", "A"],
-            ["B+ watch", "B+ Watch"],
-            ["Long", "Long"],
-            ["Short", "Short"],
-          ].map(([label, value]) => (
+          {FILTER_OPTIONS.map(([label, value]) => (
             <button key={value} onClick={() => setActiveFilter(value)} className={`px-3 py-1.5 rounded transition-all ${activeFilter === value ? "bg-orange-600 text-white font-bold" : "bg-zinc-950 border border-zinc-850 text-zinc-400 hover:text-white"}`}>{label}</button>
           ))}
         </div>
