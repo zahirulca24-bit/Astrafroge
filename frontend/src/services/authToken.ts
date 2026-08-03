@@ -2,35 +2,44 @@
  * Memory-only operator token for protected backend mutations.
  *
  * Tokens are NEVER read from VITE_* environment variables, which are inlined
- * into the production bundle and visible to every visitor. Instead, an
- * operator may set a token at runtime via `authToken.set(...)`. When no token
- * is set, protected mutations are blocked and a clear error is surfaced.
- *
- * There is no authentication flow in the frontend today, so mutations remain
- * disabled until a secure session mechanism is introduced.
+ * into the production bundle and visible to every visitor. The token is kept
+ * on `globalThis` so every lazy-loaded chunk shares the same in-memory value.
+ * It is never written to localStorage, sessionStorage, cookies, or the build.
  */
 
-let memoryToken: string | null = null;
+type AstraForgeGlobal = typeof globalThis & {
+  __ASTRAFORGE_OPERATOR_TOKEN__?: string | null;
+};
+
+function tokenStore(): AstraForgeGlobal {
+  return globalThis as AstraForgeGlobal;
+}
+
+function readToken(): string | null {
+  const token = tokenStore().__ASTRAFORGE_OPERATOR_TOKEN__;
+  return typeof token === "string" && token.trim() ? token.trim() : null;
+}
 
 export const authToken = {
   get(): string | null {
-    return memoryToken;
+    return readToken();
   },
 
   set(token: string | null): void {
-    memoryToken = token ? token.trim() : null;
+    tokenStore().__ASTRAFORGE_OPERATOR_TOKEN__ = token ? token.trim() : null;
   },
 
   isAvailable(): boolean {
-    return memoryToken !== null && memoryToken.length > 0;
+    return readToken() !== null;
   },
 
   require(): string {
-    if (!memoryToken) {
+    const token = readToken();
+    if (!token) {
       throw new Error(
         "No authenticated session is available. Protected scanner actions are disabled until a secure operator token is configured at runtime.",
       );
     }
-    return memoryToken;
+    return token;
   },
 };
