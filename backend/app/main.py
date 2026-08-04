@@ -26,6 +26,7 @@ from app.persistence import Persistence, TradingStateRepositories
 
 mutation_logger = logging.getLogger("astraforge.mutation_audit")
 execution_logger = logging.getLogger("astraforge.execution")
+scanner_logger = logging.getLogger("astraforge.scanner")
 
 
 def _audit_mutation(request: Request, *, request_id: str, status_code: int) -> None:
@@ -137,6 +138,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
             async def start_scanner() -> None:
                 await service.start()
+                await asyncio.sleep(5)
+                latest_run = service.latest_run()
+                if latest_run is None or latest_run.universe_size == 0:
+                    retry_run = await service.run_now()
+                    scanner_logger.info(
+                        "Initial full-universe scanner run retried after startup",
+                        extra={
+                            "run_id": retry_run.run_id,
+                            "status": retry_run.status.value,
+                            "universe_size": retry_run.universe_size,
+                            "evaluated_symbols": retry_run.evaluated_symbols,
+                        },
+                    )
 
             startup_tasks.append(asyncio.create_task(start_scanner()))
             await asyncio.sleep(0)
