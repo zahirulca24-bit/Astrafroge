@@ -66,6 +66,7 @@ export const Dashboard: React.FC = () => {
     indicatorsLoading,
     scannerStatus,
     scannerHealth,
+    mutationBanner,
   } = useTrading();
 
   const [backendStatus, setBackendStatus] = useState<AstraForgeBackendStatus>("Not connected");
@@ -135,6 +136,15 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div id="dashboard-page" className="flex flex-col gap-4">
+      {mutationBanner?.page === "Dashboard" && (
+        <div className="rounded-lg border border-rose-900/60 bg-rose-950/25 px-3 py-2 text-xs font-mono text-rose-300">
+          <div className="font-bold text-rose-200">{mutationBanner.title}</div>
+          <div className="mt-1">{mutationBanner.message}</div>
+          <div className="mt-1 text-[10px] text-rose-400/90">
+            {mutationBanner.code ? `${mutationBanner.code}${mutationBanner.statusCode ? ` (${mutationBanner.statusCode})` : ""}` : mutationBanner.statusCode ? `HTTP ${mutationBanner.statusCode}` : ""}
+          </div>
+        </div>
+      )}
       <div className="bg-zinc-950 border border-zinc-900 rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <span className="text-zinc-500 font-bold">Live Status:</span>

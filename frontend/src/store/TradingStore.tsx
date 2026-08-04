@@ -15,7 +15,8 @@ import { marketDataService } from "../services/marketDataService";
 import { apiService } from "../services/apiService";
 import { scannerService } from "../services/scannerService";
 import { tradingRecordsService } from "../services/tradingRecordsService";
-import { authToken } from "../services/authToken";
+import { operatorSessionService, OperatorSessionState, OperatorSessionStatusSnapshot } from "../services/operatorSession";
+import { ApiRequestError } from "../services/apiClient";
 import { buildCsv } from "../services/csv";
 import { loadFavorites, loadSettings } from "../services/storage";
 import { warnOnce } from "../services/runtimeLogger";
@@ -30,6 +31,15 @@ export type NavigationPage =
   | "Settings";
 
 type ActivityType = "scan" | "trade" | "system" | "risk";
+type MutationPage = "Dashboard" | "Scanner" | "Active Trades" | "Settings";
+
+interface MutationBanner {
+  page: MutationPage;
+  title: string;
+  message: string;
+  code?: string | null;
+  statusCode?: number | null;
+}
 
 interface BotActivity {
   id: string;
@@ -74,6 +84,15 @@ interface TradingContextProps {
   indicatorsLoading: boolean;
   tradingRecordsLoading: boolean;
   tradingRecordsError: string | null;
+  operatorSessionState: OperatorSessionState;
+  operatorSession: OperatorSessionStatusSnapshot | null;
+  operatorSessionMessage: string | null;
+  mutationBanner: MutationBanner | null;
+  clearMutationBanner: () => void;
+  loginOperatorSession: (operatorToken: string) => Promise<void>;
+  logoutOperatorSession: () => Promise<void>;
+  protectedControlsEnabled: boolean;
+  protectedControlsReason: string;
 }
 
 const TradingContext = createContext<TradingContextProps | undefined>(undefined);
@@ -101,6 +120,51 @@ export const TradingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [tradingRecordsError, setTradingRecordsError] = useState<string | null>(null);
   const [activities, setActivities] = useState<BotActivity[]>([]);
   const [isScanning, setIsScanning] = useState(false);
+  const [operatorSessionState, setOperatorSessionState] = useState<OperatorSessionState>("loading");
+  const [operatorSession, setOperatorSession] = useState<OperatorSessionStatusSnapshot | null>(null);
+  const [operatorSessionMessage, setOperatorSessionMessage] = useState<string | null>(null);
+  const [mutationBanner, setMutationBanner] = useState<MutationBanner | null>(null);
+
+  const protectedControlsEnabled = operatorSessionState === "authenticated";
+  const protectedControlsReason =
+    operatorSessionState === "authenticated"
+      ? "Protected controls are available."
+      : operatorSessionState === "expired"
+      ? "Operator session expired. Sign in again to re-enable protected controls."
+      : operatorSessionState === "unauthorized"
+      ? "Operator access is unauthorized for this browser session."
+      : operatorSessionState === "error"
+      ? operatorSessionMessage ?? "Operator session status is unavailable."
+      : "Sign in with the operator token to enable protected controls.";
+
+  const clearMutationBanner = () => setMutationBanner(null);
+
+  const setMutationError = (page: MutationPage, title: string, error: unknown) => {
+    const message = error instanceof ApiRequestError ? error.message : error instanceof Error ? error.message : "A protected action failed.";
+    setMutationBanner({
+      page,
+      title,
+      message,
+      code: error instanceof ApiRequestError ? error.code : null,
+      statusCode: error instanceof ApiRequestError ? error.statusCode : null,
+    });
+  };
+
+  const refreshOperatorSession = async () => {
+    try {
+      const snapshot = await operatorSessionService.status();
+      setOperatorSession(snapshot);
+      setOperatorSessionState("authenticated");
+      setOperatorSessionMessage(null);
+      return snapshot;
+    } catch (error) {
+      const state = operatorSessionService.stateFromError(error);
+      setOperatorSession(null);
+      setOperatorSessionState(state);
+      setOperatorSessionMessage(error instanceof Error ? error.message : null);
+      return null;
+    }
+  };
 
   const scannerHealth: ScannerEngineHealth = useMemo(() => {
     if (!scannerStatus || !scannerStatus.scannerRuntimeImplemented) return "Unavailable";
@@ -116,6 +180,21 @@ export const TradingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings)), [settings]);
   useEffect(() => localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites)), [favorites]);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      setOperatorSessionState("loading");
+      const snapshot = await refreshOperatorSession();
+      if (!active) return;
+      if (snapshot) {
+        setOperatorSession(snapshot);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -271,6 +350,17 @@ export const TradingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const triggerEmergencyStop = () => {
+    if (!protectedControlsEnabled) {
+      setMutationBanner({
+        page: "Dashboard",
+        title: "Emergency stop blocked",
+        message: protectedControlsReason,
+        code: null,
+        statusCode: null,
+      });
+      addActivity("Emergency stop blocked until an operator session is authenticated.", "risk");
+      return;
+    }
     setSettings((previous) => ({
       ...previous,
       automation: { ...previous.automation, botStatus: "Paused", autoExecution: false },
@@ -306,6 +396,17 @@ export const TradingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         addActivity(`Local draft removed for ${trade.symbol}; no exchange action occurred.`, "trade");
         return;
       }
+      if (!protectedControlsEnabled) {
+        setMutationBanner({
+          page: "Active Trades",
+          title: "Trade close blocked",
+          message: protectedControlsReason,
+          code: null,
+          statusCode: null,
+        });
+        addActivity(`Backend trade close blocked for ${trade.symbol}: ${protectedControlsReason}`, "risk");
+        return;
+      }
       try {
         await tradingRecordsService.closeTrade(id, reason);
         const [trades, journal] = await Promise.all([tradingRecordsService.getActiveTrades(), tradingRecordsService.getJournal()]);
@@ -314,17 +415,24 @@ export const TradingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setTradingRecordsError(null);
         addActivity(`Backend Demo trade ${id} closed and reconciled.`, "trade");
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Trade close failed.";
-        setTradingRecordsError(message);
-        addActivity(message, "risk");
+        setTradingRecordsError(error instanceof Error ? error.message : "Trade close failed.");
+        setMutationError("Active Trades", "Trade close failed", error);
+        addActivity(error instanceof Error ? error.message : "Trade close failed.", "risk");
       }
     })();
   };
 
   const triggerScan = () => {
     void (async () => {
-      if (!authToken.isAvailable()) {
-        addActivity("Scanner action blocked: configure the operator token in Settings.", "scan");
+      if (!protectedControlsEnabled) {
+        setMutationBanner({
+          page: "Scanner",
+          title: scannerStatus?.state === "OFF" ? "Scanner start blocked" : "Scan now blocked",
+          message: protectedControlsReason,
+          code: null,
+          statusCode: null,
+        });
+        addActivity(`Scanner action blocked: ${protectedControlsReason}`, "scan");
         return;
       }
       setIsScanning(true);
@@ -338,8 +446,8 @@ export const TradingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setScannerSummary(snapshot.summary ?? status.latestRun ?? null);
         addActivity("Backend scanner action completed.", "scan");
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Scanner request failed.";
-        addActivity(message, "scan");
+        setMutationError("Scanner", scannerStatus?.state === "OFF" ? "Scanner start failed" : "Scan now failed", error);
+        addActivity(error instanceof Error ? error.message : "Scanner request failed.", "scan");
         warnOnce("scanner-action", "Scanner action failed.", error, 5_000);
       } finally {
         setIsScanning(false);
@@ -349,8 +457,15 @@ export const TradingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const triggerStopScanner = () => {
     void (async () => {
-      if (!authToken.isAvailable()) {
-        addActivity("Scanner stop blocked: configure the operator token in Settings.", "scan");
+      if (!protectedControlsEnabled) {
+        setMutationBanner({
+          page: "Scanner",
+          title: "Scanner stop blocked",
+          message: protectedControlsReason,
+          code: null,
+          statusCode: null,
+        });
+        addActivity(`Scanner stop blocked: ${protectedControlsReason}`, "scan");
         return;
       }
       setIsScanning(true);
@@ -358,12 +473,49 @@ export const TradingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setScannerStatus(await scannerService.stop());
         addActivity("Backend scanner stopped.", "scan");
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Scanner stop failed.";
-        addActivity(message, "scan");
+        setMutationError("Scanner", "Scanner stop failed", error);
+        addActivity(error instanceof Error ? error.message : "Scanner stop failed.", "scan");
       } finally {
         setIsScanning(false);
       }
     })();
+  };
+
+  const loginOperatorSession = async (operatorToken: string) => {
+    setOperatorSessionState("loading");
+    setMutationBanner(null);
+    try {
+      const snapshot = await operatorSessionService.login(operatorToken);
+      setOperatorSession(snapshot);
+      setOperatorSessionState("authenticated");
+      setOperatorSessionMessage(null);
+      addActivity("Operator session authenticated and stored in an HttpOnly cookie.", "system");
+    } catch (error) {
+      const state = operatorSessionService.stateFromError(error);
+      setOperatorSession(null);
+      setOperatorSessionState(state);
+      setOperatorSessionMessage(error instanceof Error ? error.message : "Operator login failed.");
+      setMutationBanner({
+        page: "Settings",
+        title: "Operator login failed",
+        message: error instanceof Error ? error.message : "Operator login failed.",
+        code: error instanceof ApiRequestError ? error.code : null,
+        statusCode: error instanceof ApiRequestError ? error.statusCode : null,
+      });
+      throw error;
+    }
+  };
+
+  const logoutOperatorSession = async () => {
+    try {
+      await operatorSessionService.logout();
+    } finally {
+      setOperatorSession(null);
+      setOperatorSessionState("unauthenticated");
+      setOperatorSessionMessage(null);
+      setMutationBanner(null);
+      addActivity("Operator session cleared from the browser.", "system");
+    }
   };
 
   const clearJournal = () => addActivity("Backend journal is authoritative and cannot be cleared from the frontend.");
@@ -392,6 +544,9 @@ export const TradingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       favorites, toggleFavorite, triggerEmergencyStop, triggerScan, triggerStopScanner, isScanning,
       exportJournalCSV, symbols, updateSymbolPrice, marketStatus, backendHealth, universeSummary,
       selectedSymbolIndicators, indicatorsLoading, tradingRecordsLoading, tradingRecordsError,
+      operatorSessionState, operatorSession, operatorSessionMessage, mutationBanner,
+      clearMutationBanner, loginOperatorSession, logoutOperatorSession,
+      protectedControlsEnabled, protectedControlsReason,
     }}>
       {children}
     </TradingContext.Provider>

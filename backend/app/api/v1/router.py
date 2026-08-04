@@ -8,6 +8,7 @@ from app.api.v1.routes import (
     indicators,
     journal_performance,
     market,
+    operator_session,
     risk,
     scanner,
     signals,
@@ -23,6 +24,7 @@ api_router.include_router(market.router)
 api_router.include_router(universe.router)
 api_router.include_router(indicators.router)
 api_router.include_router(scanner.router)
+api_router.include_router(operator_session.router)
 api_router.include_router(signals.router)
 api_router.include_router(risk.router)
 api_router.include_router(execution.router)

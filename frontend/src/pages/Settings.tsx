@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { useTrading } from "../store/TradingStore";
 import { AppSettings } from "../types";
 import { backendService } from "../services/backendService";
-import { authToken } from "../services/authToken";
 import {
   Globe,
   Sliders,
@@ -24,13 +23,26 @@ type SettingsTab =
   | "system";
 
 export const Settings: React.FC = () => {
-  const { settings, saveSettings, restoreDefaultSettings, marketStatus } = useTrading();
+  const {
+    settings,
+    saveSettings,
+    restoreDefaultSettings,
+    marketStatus,
+    operatorSessionState,
+    operatorSession,
+    operatorSessionMessage,
+    mutationBanner,
+    loginOperatorSession,
+    logoutOperatorSession,
+    protectedControlsReason,
+    clearMutationBanner,
+  } = useTrading();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("binance");
   
   const [backendStatus, setBackendStatus] = useState<string>("Not connected");
   const [operatorTokenInput, setOperatorTokenInput] = useState("");
-  const [operatorTokenConfigured, setOperatorTokenConfigured] = useState(authToken.isAvailable());
+  const [operatorLoginBusy, setOperatorLoginBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -104,16 +116,26 @@ export const Settings: React.FC = () => {
     setHasChanges(false);
   };
 
-  const saveOperatorTokenForSession = () => {
-    authToken.set(operatorTokenInput);
-    setOperatorTokenConfigured(authToken.isAvailable());
-    setOperatorTokenInput("");
+  const saveOperatorTokenForSession = async () => {
+    setOperatorLoginBusy(true);
+    clearMutationBanner();
+    try {
+      await loginOperatorSession(operatorTokenInput);
+      setOperatorTokenInput("");
+    } finally {
+      setOperatorLoginBusy(false);
+    }
   };
 
-  const clearOperatorTokenForSession = () => {
-    authToken.set(null);
-    setOperatorTokenConfigured(false);
-    setOperatorTokenInput("");
+  const clearOperatorTokenForSession = async () => {
+    setOperatorLoginBusy(true);
+    clearMutationBanner();
+    try {
+      await logoutOperatorSession();
+      setOperatorTokenInput("");
+    } finally {
+      setOperatorLoginBusy(false);
+    }
   };
 
   const menuItems: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
@@ -156,6 +178,16 @@ export const Settings: React.FC = () => {
         <div className="bg-emerald-950 border border-emerald-900 rounded-lg p-3 flex items-center gap-2 text-xs font-mono text-emerald-400 font-bold">
           <CheckCircle size={15} />
           <span>Frontend preferences saved in this browser. Backend configuration was not changed.</span>
+        </div>
+      )}
+
+      {mutationBanner?.page === "Settings" && (
+        <div className="rounded-lg border border-rose-900/60 bg-rose-950/25 px-3 py-2 text-xs font-mono text-rose-300">
+          <div className="font-bold text-rose-200">{mutationBanner.title}</div>
+          <div className="mt-1">{mutationBanner.message}</div>
+          <div className="mt-1 text-[10px] text-rose-400/90">
+            {mutationBanner.code ? `${mutationBanner.code}${mutationBanner.statusCode ? ` (${mutationBanner.statusCode})` : ""}` : mutationBanner.statusCode ? `HTTP ${mutationBanner.statusCode}` : ""}
+          </div>
         </div>
       )}
 
@@ -303,8 +335,8 @@ export const Settings: React.FC = () => {
 
                 <div className="bg-zinc-950 border border-zinc-850 rounded p-4 space-y-3">
                   <div>
-                    <span className="text-zinc-300 font-bold block">Operator mutation token (memory-only)</span>
-                    <span className="text-[10px] text-zinc-500">Required only for scanner start, stop, and run-now. It is never saved to localStorage or included in the build.</span>
+                    <span className="text-zinc-300 font-bold block">Operator login</span>
+                    <span className="text-[10px] text-zinc-500">The token is sent once to the backend and converted into an HttpOnly session cookie. It is never saved to localStorage or included in the build.</span>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2">
                     <input
@@ -312,14 +344,20 @@ export const Settings: React.FC = () => {
                       autoComplete="off"
                       value={operatorTokenInput}
                       onChange={(event) => setOperatorTokenInput(event.target.value)}
-                      placeholder="Paste the Render backend mutation token for this session"
+                      placeholder="Paste the operator token to sign in"
                       className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-700"
                     />
-                    <button type="button" onClick={saveOperatorTokenForSession} disabled={!operatorTokenInput.trim()} className="bg-orange-600 hover:bg-orange-700 disabled:opacity-40 text-white font-bold px-3 py-2 rounded">SET FOR SESSION</button>
-                    <button type="button" onClick={clearOperatorTokenForSession} disabled={!operatorTokenConfigured} className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-300 font-bold px-3 py-2 rounded">CLEAR</button>
+                    <button type="button" onClick={() => void saveOperatorTokenForSession()} disabled={!operatorTokenInput.trim() || operatorLoginBusy} className="bg-orange-600 hover:bg-orange-700 disabled:opacity-40 text-white font-bold px-3 py-2 rounded">{operatorLoginBusy ? "SIGNING IN..." : "SIGN IN"}</button>
+                    <button type="button" onClick={() => void clearOperatorTokenForSession()} disabled={operatorLoginBusy || operatorSessionState !== "authenticated"} className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-300 font-bold px-3 py-2 rounded">SIGN OUT</button>
                   </div>
-                  <div className={operatorTokenConfigured ? "text-emerald-400 text-[10px]" : "text-amber-400 text-[10px]"}>
-                    {operatorTokenConfigured ? "Operator token configured for this browser session." : "Protected scanner actions are disabled until a token is set."}
+                  <div className={operatorSessionState === "authenticated" ? "text-emerald-400 text-[10px]" : operatorSessionState === "expired" ? "text-amber-400 text-[10px]" : "text-rose-400 text-[10px]"}>
+                    {operatorSessionState === "authenticated"
+                      ? `Authenticated session restored. Expires ${operatorSession?.expiresAt ?? "soon"}.`
+                      : operatorSessionState === "expired"
+                      ? "Session expired. Sign in again to re-enable protected controls."
+                      : operatorSessionState === "unauthorized"
+                      ? "Operator access is unauthorized for this session."
+                      : operatorSessionMessage ?? protectedControlsReason}
                   </div>
                 </div>
               </div>

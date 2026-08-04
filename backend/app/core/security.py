@@ -6,21 +6,24 @@ import asyncio
 import hashlib
 import hmac
 import re
+import secrets
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Annotated
 
-from fastapi import Depends, Header, Request
+from fastapi import Cookie, Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
+from app.persistence.models import OperatorSessionRow
 from app.persistence.repositories import TradingStateRepositories
 
 _IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{16,128}$")
 _BEARER = HTTPBearer(auto_error=False)
+OPERATOR_SESSION_COOKIE = "astraforge_operator_session"
 MUTATION_OPENAPI_PATHS = (
     "/scanner/start",
     "/scanner/stop",
@@ -49,6 +52,62 @@ class MutationAuthorization:
     idempotency_key_hash: str
     request_fingerprint: str
     authorized_at: datetime
+
+
+@dataclass(frozen=True)
+class OperatorSessionAuthorization:
+    """Validated operator session metadata."""
+
+    session_hash: str
+    created_at: datetime
+    last_seen_at: datetime
+    expires_at: datetime
+
+
+class OperatorLoginRateLimiter:
+    """Per-process brute-force guard for the operator login endpoint."""
+
+    def __init__(self, *, max_attempts: int, window_seconds: int) -> None:
+        if max_attempts < 1:
+            raise ValueError("Operator login max attempts must be positive")
+        if window_seconds < 1:
+            raise ValueError("Operator login window must be positive")
+        self._max_attempts = max_attempts
+        self._window = timedelta(seconds=window_seconds)
+        self._lock = asyncio.Lock()
+        self._attempts: dict[str, list[datetime]] = {}
+
+    async def check(
+        self, *, client_id: str, now: datetime | None = None
+    ) -> tuple[bool, int | None]:
+        current = (now or datetime.now(UTC)).astimezone(UTC)
+        async with self._lock:
+            attempts = [
+                attempt
+                for attempt in self._attempts.get(client_id, [])
+                if attempt > current - self._window
+            ]
+            self._attempts[client_id] = attempts
+            if len(attempts) >= self._max_attempts:
+                oldest = min(attempts)
+                retry_after = max(1, int((oldest + self._window - current).total_seconds()))
+                return False, retry_after
+            return True, None
+
+    async def record_failure(self, *, client_id: str, now: datetime | None = None) -> None:
+        current = (now or datetime.now(UTC)).astimezone(UTC)
+        async with self._lock:
+            attempts = [
+                attempt
+                for attempt in self._attempts.get(client_id, [])
+                if attempt > current - self._window
+            ]
+            attempts.append(current)
+            self._attempts[client_id] = attempts
+
+    async def clear(self, *, client_id: str) -> None:
+        async with self._lock:
+            self._attempts.pop(client_id, None)
 
 
 @dataclass(frozen=True)
@@ -145,9 +204,7 @@ class MutationReplayGuard:
         return ReplayClaimResult.REUSED_FOR_DIFFERENT_REQUEST
 
     def _prune(self, now: datetime) -> None:
-        expired = [
-            key for key, entry in self._entries.items() if entry.expires_at <= now
-        ]
+        expired = [key for key, entry in self._entries.items() if entry.expires_at <= now]
         for key in expired:
             self._entries.pop(key, None)
 
@@ -162,6 +219,33 @@ def _client_ip(request: Request) -> str | None:
     if forwarded:
         return forwarded.split(",", 1)[0].strip() or None
     return request.client.host if request.client is not None else None
+
+
+def _operator_session_hash(session_token: str) -> str:
+    return hashlib.sha256(session_token.encode()).hexdigest()
+
+
+def _operator_session_cookie_secure(settings: Settings) -> bool:
+    return settings.environment in {"staging", "production"}
+
+
+def _operator_session_cookie_max_age(settings: Settings) -> int:
+    return settings.operator_session_ttl_seconds
+
+
+def _operator_session_cookie_value() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _operator_session_repository(request: Request) -> TradingStateRepositories:
+    repositories = getattr(request.app.state, "trading_state_repositories", None)
+    if not isinstance(repositories, TradingStateRepositories):
+        raise AppError(
+            status_code=503,
+            code="OPERATOR_SESSION_UNAVAILABLE",
+            message="Operator session storage is unavailable",
+        )
+    return repositories
 
 
 def _fingerprint(request: Request, body: bytes) -> str:
@@ -206,11 +290,183 @@ def _valid_token(
     return hmac.compare_digest(supplied, configured)
 
 
+def _valid_operator_secret(candidate: str, configured_token: str) -> bool:
+    try:
+        supplied = candidate.encode("ascii")
+        configured = configured_token.encode("ascii")
+    except UnicodeEncodeError:
+        return False
+    return hmac.compare_digest(supplied, configured)
+
+
+async def _mutation_session_context(
+    request: Request,
+    session_token: Annotated[str | None, Cookie(alias=OPERATOR_SESSION_COOKIE)] = None,
+    settings: Settings = Depends(get_settings),  # noqa: B008
+) -> OperatorSessionAuthorization:
+    if not settings.mutation_auth_required or not settings.mutation_token_configured:
+        current = datetime.now(UTC)
+        return OperatorSessionAuthorization(
+            session_hash="bypass",
+            created_at=current,
+            last_seen_at=current,
+            expires_at=current,
+        )
+    return await _validate_operator_session(
+        request,
+        session_token=session_token,
+        settings=settings,
+    )
+
+
+async def login_operator_session(
+    request: Request,
+    *,
+    operator_token: str,
+    settings: Settings,
+) -> OperatorSessionAuthorization:
+    """Validate the operator secret and create a durable session cookie payload."""
+
+    if not settings.mutation_auth_required:
+        raise AppError(
+            status_code=503,
+            code="OPERATOR_SESSION_DISABLED",
+            message="Operator sessions are disabled while mutation authentication is bypassed",
+        )
+    if not settings.mutation_token_configured:
+        raise AppError(
+            status_code=503,
+            code="OPERATOR_SESSION_NOT_CONFIGURED",
+            message="Operator session login is unavailable until authorization is configured",
+        )
+
+    limiter = getattr(request.app.state, "operator_login_rate_limiter", None)
+    if not isinstance(limiter, OperatorLoginRateLimiter):
+        raise AppError(
+            status_code=503,
+            code="OPERATOR_SESSION_UNAVAILABLE",
+            message="Operator session login is unavailable",
+        )
+    client_id = _client_ip(request) or "unknown"
+    permitted, retry_after = await limiter.check(client_id=client_id)
+    if not permitted:
+        raise AppError(
+            status_code=429,
+            code="OPERATOR_LOGIN_RATE_LIMITED",
+            message="Too many failed operator login attempts. Please wait before trying again.",
+            headers={"Retry-After": str(retry_after or settings.operator_login_window_seconds)},
+        )
+
+    configured = settings.mutation_api_token
+    assert configured is not None
+    if not _valid_operator_secret(operator_token.strip(), configured.get_secret_value()):
+        await limiter.record_failure(client_id=client_id)
+        raise AppError(
+            status_code=401,
+            code="INVALID_OPERATOR_CREDENTIALS",
+            message="The operator token is invalid",
+        )
+
+    await limiter.clear(client_id=client_id)
+    repositories = _operator_session_repository(request)
+    now = datetime.now(UTC)
+    session_token = _operator_session_cookie_value()
+    session_hash = _operator_session_hash(session_token)
+    expires_at = now + timedelta(seconds=settings.operator_session_ttl_seconds)
+    created = repositories.create_operator_session(
+        session_hash=session_hash,
+        created_at=now,
+        last_seen_at=now,
+        expires_at=expires_at,
+    )
+    if not created:
+        raise AppError(
+            status_code=503,
+            code="OPERATOR_SESSION_UNAVAILABLE",
+            message="Operator session storage is unavailable",
+        )
+    request.state.operator_session_cookie = session_token
+    return OperatorSessionAuthorization(
+        session_hash=session_hash,
+        created_at=now,
+        last_seen_at=now,
+        expires_at=expires_at,
+    )
+
+
+async def validate_operator_session(
+    request: Request,
+    session_token: Annotated[str | None, Cookie(alias=OPERATOR_SESSION_COOKIE)] = None,
+    settings: Settings = Depends(get_settings),  # noqa: B008
+) -> OperatorSessionAuthorization:
+    """Fail closed when the operator session cookie is absent, invalid, or expired."""
+
+    return await _validate_operator_session(request, session_token=session_token, settings=settings)
+
+
+async def _validate_operator_session(
+    request: Request,
+    *,
+    session_token: str | None,
+    settings: Settings,
+) -> OperatorSessionAuthorization:
+    """Validate an operator session using a resolved cookie value."""
+
+    if not settings.mutation_auth_required:
+        raise AppError(
+            status_code=503,
+            code="OPERATOR_SESSION_DISABLED",
+            message="Operator sessions are disabled while mutation authentication is bypassed",
+        )
+    if not settings.mutation_token_configured:
+        raise AppError(
+            status_code=503,
+            code="OPERATOR_SESSION_NOT_CONFIGURED",
+            message="Operator session validation is unavailable until authorization is configured",
+        )
+    if session_token is None or not session_token.strip():
+        raise AppError(
+            status_code=401,
+            code="OPERATOR_SESSION_REQUIRED",
+            message="An authenticated operator session is required",
+        )
+
+    repositories = _operator_session_repository(request)
+    now = datetime.now(UTC)
+    session_hash = _operator_session_hash(session_token.strip())
+    row = repositories.operator_session(session_hash, now=now)
+    if row is None:
+        raise AppError(
+            status_code=401,
+            code="OPERATOR_SESSION_EXPIRED",
+            message="The operator session has expired or is no longer valid",
+        )
+    assert isinstance(row, OperatorSessionRow)
+    return OperatorSessionAuthorization(
+        session_hash=row.session_hash,
+        created_at=row.created_at,
+        last_seen_at=now,
+        expires_at=row.expires_at,
+    )
+
+
+async def revoke_operator_session(
+    request: Request,
+    session_token: Annotated[str | None, Cookie(alias=OPERATOR_SESSION_COOKIE)] = None,
+) -> bool:
+    """Delete the current operator session if a token is present."""
+
+    if session_token is None or not session_token.strip():
+        return False
+    repositories = _operator_session_repository(request)
+    return repositories.delete_operator_session(_operator_session_hash(session_token.strip()))
+
+
 async def authorize_mutation(
     request: Request,
-    credentials: Annotated[
-        HTTPAuthorizationCredentials | None,
-        Depends(_BEARER),
+    _session: Annotated[
+        OperatorSessionAuthorization,
+        Depends(_mutation_session_context),
     ],
     idempotency_key: Annotated[
         str | None,
@@ -248,14 +504,6 @@ async def authorize_mutation(
 
     configured = settings.mutation_api_token
     assert configured is not None
-    if not _valid_token(credentials, configured.get_secret_value()):
-        raise AppError(
-            status_code=401,
-            code="INVALID_MUTATION_CREDENTIALS",
-            message="Valid operator authorization is required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
     if idempotency_key is None:
         raise AppError(
             status_code=400,

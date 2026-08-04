@@ -12,6 +12,9 @@ export const ActiveTrades: React.FC = () => {
     setCurrentPage,
     setSelectedSymbol,
     marketStatus,
+    mutationBanner,
+    protectedControlsEnabled,
+    protectedControlsReason,
   } = useTrading();
 
   const [filterSide, setFilterSide] = useState<string>("All"); // All, Long, Short
@@ -78,6 +81,15 @@ export const ActiveTrades: React.FC = () => {
 
   return (
     <div id="active-trades-page" className="flex flex-col gap-4">
+      {mutationBanner?.page === "Active Trades" && (
+        <div className="rounded-lg border border-rose-900/60 bg-rose-950/25 px-3 py-2 text-xs font-mono text-rose-300">
+          <div className="font-bold text-rose-200">{mutationBanner.title}</div>
+          <div className="mt-1">{mutationBanner.message}</div>
+          <div className="mt-1 text-[10px] text-rose-400/90">
+            {mutationBanner.code ? `${mutationBanner.code}${mutationBanner.statusCode ? ` (${mutationBanner.statusCode})` : ""}` : mutationBanner.statusCode ? `HTTP ${mutationBanner.statusCode}` : ""}
+          </div>
+        </div>
+      )}
       {marketStatus !== "Connected" && activeTrades.length > 0 && (
         <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 font-mono text-[11px] text-amber-300">
           {marketStatus === "Disconnected"
@@ -278,7 +290,9 @@ export const ActiveTrades: React.FC = () => {
                       </button>
                       <button
                         onClick={() => handleClosePositionClick(trade.id)}
-                        className="flex-1 sm:flex-initial border border-rose-600/60 hover:border-rose-500 text-rose-400 hover:text-white px-2.5 py-1 rounded transition-colors flex items-center justify-center gap-1 text-[10.5px] font-semibold"
+                        disabled={trade.backendAuthoritative && !protectedControlsEnabled}
+                        className="flex-1 sm:flex-initial border border-rose-600/60 hover:border-rose-500 text-rose-400 hover:text-white px-2.5 py-1 rounded transition-colors flex items-center justify-center gap-1 text-[10.5px] font-semibold disabled:opacity-40"
+                        title={trade.backendAuthoritative && !protectedControlsEnabled ? protectedControlsReason : "Close trade"}
                       >
                         <Trash2 size={11} />
                         <span className="hidden sm:inline">Remove Trade</span>
@@ -415,7 +429,9 @@ export const ActiveTrades: React.FC = () => {
             <div className="pt-3.5 border-t border-zinc-800">
               <button
                 onClick={() => handleClosePositionClick(selectedTrade.id)}
-                className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2 rounded transition-colors text-center"
+                disabled={selectedTrade.backendAuthoritative && !protectedControlsEnabled}
+                className="w-full bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white font-bold py-2 rounded transition-colors text-center"
+                title={selectedTrade.backendAuthoritative && !protectedControlsEnabled ? protectedControlsReason : "Close trade"}
               >
                 Remove Trade
               </button>

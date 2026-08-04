@@ -20,8 +20,6 @@ export interface ApiRequestOptions {
   idempotent?: boolean;
   /** Explicit idempotency key; ignored unless `idempotent` is true. */
   idempotencyKey?: string;
-  /** Bearer token; when provided, sets `Authorization: Bearer <token>`. */
-  authToken?: string;
   /** Optional JSON body for non-GET requests. */
   body?: unknown;
   /** Optional extra headers. */
@@ -59,24 +57,59 @@ function readNestedRecord(
   return null;
 }
 
-function parseBackendErrorPayload(payload: unknown): string | null {
+function parseBackendErrorPayload(payload: unknown): { code: string | null; message: string | null } | null {
   if (!isRecord(payload)) return null;
   const errorBlock = readNestedRecord(payload, "error") ?? payload;
   const code = readString(errorBlock, "code", "error_code");
   const message = readString(errorBlock, "message", "detail", "error_message");
-  if (code && message) return `${code}: ${message}`;
-  return code ?? message;
+  return { code, message };
 }
 
-async function buildBackendErrorMessage(response: Response, path: string): Promise<string> {
-  const fallback = `Backend request failed (${response.status}) for ${path}`;
+export class ApiRequestError extends Error {
+  statusCode: number;
+
+  code: string | null;
+
+  retryAfterSeconds: number | null;
+
+  constructor(statusCode: number, message: string, code: string | null = null, retryAfterSeconds: number | null = null) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.statusCode = statusCode;
+    this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+async function buildBackendError(response: Response, path: string): Promise<{
+  message: string;
+  code: string | null;
+  retryAfterSeconds: number | null;
+}> {
+  const fallback = {
+    message: `Backend request failed (${response.status}) for ${path}`,
+    code: null,
+    retryAfterSeconds: readRetryAfterSeconds(response),
+  };
   try {
     const payload = await response.json();
     const parsed = parseBackendErrorPayload(payload);
-    return parsed ? `${parsed} (${response.status})` : fallback;
+    if (!parsed) return fallback;
+    return {
+      message: parsed.code && parsed.message ? `${parsed.code}: ${parsed.message} (${response.status})` : fallback.message,
+      code: parsed.code,
+      retryAfterSeconds: fallback.retryAfterSeconds,
+    };
   } catch {
     return fallback;
   }
+}
+
+function readRetryAfterSeconds(response: Response): number | null {
+  const raw = response.headers.get("Retry-After");
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function generateIdempotencyKey(): string {
@@ -158,7 +191,6 @@ export const apiClient = {
       method = "GET",
       idempotent = false,
       idempotencyKey,
-      authToken,
       body,
       headers = {},
       timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
@@ -169,10 +201,6 @@ export const apiClient = {
       Accept: "application/json",
       ...headers,
     };
-
-    if (authToken) {
-      requestHeaders.Authorization = `Bearer ${authToken}`;
-    }
 
     if (idempotent) {
       requestHeaders["Idempotency-Key"] = idempotencyKey ?? generateIdempotencyKey();
@@ -191,6 +219,7 @@ export const apiClient = {
         method,
         headers: requestHeaders,
         body: hasBody ? JSON.stringify(body) : undefined,
+        credentials: "include",
         signal,
       });
     } catch (error) {
@@ -206,7 +235,8 @@ export const apiClient = {
     cleanup();
 
     if (!response.ok) {
-      throw new Error(await buildBackendErrorMessage(response, path));
+      const error = await buildBackendError(response, path);
+      throw new ApiRequestError(response.status, error.message, error.code, error.retryAfterSeconds);
     }
 
     return (await parseJsonResponse(response)) as T;

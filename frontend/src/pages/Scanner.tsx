@@ -38,6 +38,9 @@ export const Scanner: React.FC = () => {
     isScanning,
     setSelectedSymbol,
     setCurrentPage,
+    protectedControlsEnabled,
+    protectedControlsReason,
+    mutationBanner,
   } = useTrading();
 
   const [selectedRow, setSelectedRow] = useState<ScannerResult | null>(scannerResults[0] || null);
@@ -157,6 +160,15 @@ export const Scanner: React.FC = () => {
 
   return (
     <div id="scanner-page" className="flex flex-col gap-4">
+      {mutationBanner?.page === "Scanner" && (
+        <div className="rounded-lg border border-rose-900/60 bg-rose-950/25 px-3 py-2 text-xs font-mono text-rose-300">
+          <div className="font-bold text-rose-200">{mutationBanner.title}</div>
+          <div className="mt-1">{mutationBanner.message}</div>
+          <div className="mt-1 text-[10px] text-rose-400/90">
+            {mutationBanner.code ? `${mutationBanner.code}${mutationBanner.statusCode ? ` (${mutationBanner.statusCode})` : ""}` : mutationBanner.statusCode ? `HTTP ${mutationBanner.statusCode}` : ""}
+          </div>
+        </div>
+      )}
       <div className="bg-zinc-950 border border-zinc-900 rounded-lg p-3.5 flex flex-wrap items-center justify-between gap-4 font-mono text-xs">
         <div className="flex items-center gap-2">
           <Radar className={scannerHealth === "Running" ? "text-emerald-400" : scannerHealth === "Off" ? "text-amber-400" : "text-rose-500"} size={16} />
@@ -182,16 +194,18 @@ export const Scanner: React.FC = () => {
           </div>
           <button
             onClick={handleScanNow}
-            disabled={isScanning || scannerHealth === "Unavailable"}
+            disabled={isScanning || scannerHealth === "Unavailable" || !protectedControlsEnabled}
             className="bg-orange-600 hover:bg-orange-700 active:scale-95 disabled:opacity-50 text-white font-bold px-3.5 py-1.5 rounded transition-all flex items-center gap-1.5"
+            title={protectedControlsEnabled ? "Trigger a backend scanner action" : protectedControlsReason}
           >
             <RefreshCw size={13} className={isScanning ? "animate-spin" : ""} />
             <span>{scanButtonLabel}</span>
           </button>
           <button
             onClick={triggerStopScanner}
-            disabled={isScanning || scannerStatus?.state !== "ON"}
+            disabled={isScanning || scannerStatus?.state !== "ON" || !protectedControlsEnabled}
             className="bg-zinc-800 hover:bg-rose-900/60 disabled:opacity-40 text-zinc-200 font-bold px-3 py-1.5 rounded transition-all"
+            title={protectedControlsEnabled ? "Stop the scanner" : protectedControlsReason}
           >
             STOP
           </button>

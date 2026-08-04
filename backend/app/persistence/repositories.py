@@ -18,6 +18,7 @@ from app.persistence.models import (
     ExchangeOrderRow,
     FillRow,
     MutationReplayKeyRow,
+    OperatorSessionRow,
     PositionRow,
     RiskDecisionRow,
     SignalLifecycleRow,
@@ -319,6 +320,47 @@ class TradingStateRepositories:
             if row is None or _stored_utc(row.expires_at) <= _utc(now):
                 return None
             return row
+
+    def create_operator_session(
+        self,
+        *,
+        session_hash: str,
+        created_at: datetime,
+        last_seen_at: datetime,
+        expires_at: datetime,
+    ) -> bool:
+        return self._run(
+            None,
+            lambda db: self._insert_if_missing(
+                db,
+                OperatorSessionRow(
+                    session_hash=session_hash,
+                    created_at=_utc(created_at),
+                    last_seen_at=_utc(last_seen_at),
+                    expires_at=_utc(expires_at),
+                ),
+                OperatorSessionRow,
+                session_hash,
+            ),
+        )
+
+    def operator_session(self, session_hash: str, *, now: datetime) -> OperatorSessionRow | None:
+        with self.persistence.transaction() as session:
+            row = session.get(OperatorSessionRow, session_hash)
+            if row is None or _stored_utc(row.expires_at) <= _utc(now):
+                if row is not None:
+                    session.delete(row)
+                return None
+            row.last_seen_at = _utc(now)
+            return row
+
+    def delete_operator_session(self, session_hash: str) -> bool:
+        with self.persistence.transaction() as session:
+            row = session.get(OperatorSessionRow, session_hash)
+            if row is None:
+                return False
+            session.delete(row)
+            return True
 
     def claim_mutation_replay(
         self,

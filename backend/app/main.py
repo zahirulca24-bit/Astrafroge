@@ -21,7 +21,7 @@ from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, register_exception_handlers
 from app.core.logging import configure_logging
-from app.core.security import MUTATION_OPENAPI_PATHS, MutationReplayGuard
+from app.core.security import MUTATION_OPENAPI_PATHS, MutationReplayGuard, OperatorLoginRateLimiter
 from app.persistence import Persistence, TradingStateRepositories
 
 mutation_logger = logging.getLogger("astraforge.mutation_audit")
@@ -180,10 +180,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.settings = resolved_settings
+    application.state.persistence = persistence
+    application.state.trading_state_repositories = repositories
     application.state.mutation_replay_guard = MutationReplayGuard(
         ttl_seconds=resolved_settings.mutation_replay_ttl_seconds,
         cache_limit=resolved_settings.mutation_replay_cache_limit,
         repositories=repositories,
+    )
+    application.state.operator_login_rate_limiter = OperatorLoginRateLimiter(
+        max_attempts=resolved_settings.operator_login_max_attempts,
+        window_seconds=resolved_settings.operator_login_window_seconds,
     )
     application.dependency_overrides[get_settings] = lambda: resolved_settings
 
