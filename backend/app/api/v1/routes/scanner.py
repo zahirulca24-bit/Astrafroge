@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
 from app.api.v1.dependencies import get_scanner_service
 from app.core.security import MutationAuthorization, authorize_mutation
@@ -74,15 +74,15 @@ async def scanner_status(
 
 @router.post("/start", response_model=ScannerStatusResponse)
 async def scanner_start(
+    background_tasks: BackgroundTasks,
     service: ScannerService = Depends(get_scanner_service),  # noqa: B008
     _authorization: MutationAuthorization = Depends(authorize_mutation),  # noqa: B008
 ) -> ScannerStatusResponse:
-    """Enable Scanner and ensure an initial full-universe run is requested."""
+    """Enable Scanner and request the initial full scan without blocking the client."""
 
     status = await service.start()
     if _latest_full_run(service) is None:
-        await service.run_now()
-        status = service.status()
+        background_tasks.add_task(service.run_now)
     return status
 
 
@@ -145,16 +145,4 @@ async def scanner_latest_run(
     latest = service.latest_run()
     if latest is None:
         raise HTTPException(status_code=404, detail="No Scanner run is available")
-    return latest
-
-
-@router.get("/runs/latest-full", response_model=ScannerRunSummary)
-async def scanner_latest_full_run(
-    service: ScannerService = Depends(get_scanner_service),  # noqa: B008
-) -> ScannerRunSummary:
-    """Return the latest full-universe run, independent of refresh cadence."""
-
-    latest = _latest_full_run(service)
-    if latest is None:
-        raise HTTPException(status_code=404, detail="No full-universe Scanner run is available")
     return latest
