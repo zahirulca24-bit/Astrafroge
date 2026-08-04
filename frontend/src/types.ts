@@ -18,6 +18,7 @@ export interface SymbolInfo {
 }
 
 export interface ScannerResult {
+  candidateId?: string;
   symbol: string;
   side: "Long" | "Short";
   currentPrice: number;

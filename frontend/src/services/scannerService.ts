@@ -329,6 +329,7 @@ export const scannerService = {
       ];
 
       return {
+        candidateId: dto.candidate_id,
         symbol: dto.symbol,
         side: formatScannerSide(dto.direction),
         currentPrice: currentPrice ?? Number.NaN,
