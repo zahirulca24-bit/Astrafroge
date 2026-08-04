@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
 from app.api.v1.dependencies import get_scanner_service
 from app.core.security import MutationAuthorization, authorize_mutation
+from app.schemas.early_watch import EarlyWatchList
 from app.schemas.scanner import (
     CandidateLifecycle,
     ScannerCandidateList,
@@ -19,6 +20,7 @@ from app.schemas.scanner import (
     ScannerSetup,
     ScannerStatusResponse,
 )
+from app.services.early_watch import build_early_watch
 from app.services.scanner import ScannerService
 
 router = APIRouter(prefix="/scanner", tags=["scanner"])
@@ -134,6 +136,15 @@ async def scanner_candidates(
         candidates=candidates,
         summary=_candidate_summary(service),
     )
+
+
+@router.get("/early-watch", response_model=EarlyWatchList)
+async def scanner_early_watch(
+    service: ScannerService = Depends(get_scanner_service),  # noqa: B008
+) -> EarlyWatchList:
+    """Return developing setups isolated from all executable candidate flows."""
+
+    return build_early_watch(_latest_full_run(service))
 
 
 @router.get("/runs/latest", response_model=ScannerRunSummary)
