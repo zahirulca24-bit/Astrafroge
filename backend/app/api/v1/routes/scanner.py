@@ -14,6 +14,8 @@ from app.schemas.scanner import (
     ScannerCandidateSummary,
     ScannerDirection,
     ScannerRunSummary,
+    ScannerRunStatus,
+    ScannerRunType,
     ScannerSetup,
     ScannerStatusResponse,
 )
@@ -22,8 +24,25 @@ from app.services.scanner import ScannerService
 router = APIRouter(prefix="/scanner", tags=["scanner"])
 
 
+def _latest_full_run(service: ScannerService) -> ScannerRunSummary | None:
+    """Return the newest full-universe run without letting refreshes hide it."""
+
+    runs = getattr(service, "_runs", ())
+    return next(
+        (
+            run
+            for run in reversed(runs)
+            if run.run_type is ScannerRunType.FULL_UNIVERSE_SCAN
+            and run.status is not ScannerRunStatus.SKIPPED
+        ),
+        None,
+    )
+
+
 def _candidate_summary(service: ScannerService) -> ScannerCandidateSummary:
-    latest = service.latest_run()
+    # The candidate table represents discovery by a full-universe scan. An empty
+    # five-minute active refresh must not overwrite that result with zeroes.
+    latest = _latest_full_run(service) or service.latest_run()
     status = service.status()
     if latest is None:
         return ScannerCandidateSummary(state=status.state)
@@ -58,9 +77,13 @@ async def scanner_start(
     service: ScannerService = Depends(get_scanner_service),  # noqa: B008
     _authorization: MutationAuthorization = Depends(authorize_mutation),  # noqa: B008
 ) -> ScannerStatusResponse:
-    """Enable Scanner only after operator authorization and replay protection."""
+    """Enable Scanner and ensure an initial full-universe run is requested."""
 
-    return await service.start()
+    status = await service.start()
+    if _latest_full_run(service) is None:
+        await service.run_now()
+        status = service.status()
+    return status
 
 
 @router.post("/stop", response_model=ScannerStatusResponse)
@@ -117,9 +140,21 @@ async def scanner_candidates(
 async def scanner_latest_run(
     service: ScannerService = Depends(get_scanner_service),  # noqa: B008
 ) -> ScannerRunSummary:
-    """Return the latest Scanner run summary."""
+    """Return the latest Scanner run summary of any type."""
 
     latest = service.latest_run()
     if latest is None:
         raise HTTPException(status_code=404, detail="No Scanner run is available")
+    return latest
+
+
+@router.get("/runs/latest-full", response_model=ScannerRunSummary)
+async def scanner_latest_full_run(
+    service: ScannerService = Depends(get_scanner_service),  # noqa: B008
+) -> ScannerRunSummary:
+    """Return the latest full-universe run, independent of refresh cadence."""
+
+    latest = _latest_full_run(service)
+    if latest is None:
+        raise HTTPException(status_code=404, detail="No full-universe Scanner run is available")
     return latest
