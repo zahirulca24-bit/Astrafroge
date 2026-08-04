@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
 from app.api.v1.dependencies import get_scanner_service
 from app.core.security import MutationAuthorization, authorize_mutation
@@ -13,7 +13,9 @@ from app.schemas.scanner import (
     ScannerCandidateList,
     ScannerCandidateSummary,
     ScannerDirection,
+    ScannerRunStatus,
     ScannerRunSummary,
+    ScannerRunType,
     ScannerSetup,
     ScannerStatusResponse,
 )
@@ -22,8 +24,25 @@ from app.services.scanner import ScannerService
 router = APIRouter(prefix="/scanner", tags=["scanner"])
 
 
+def _latest_full_run(service: ScannerService) -> ScannerRunSummary | None:
+    """Return the newest full-universe run without letting refreshes hide it."""
+
+    runs = getattr(service, "_runs", ())
+    return next(
+        (
+            run
+            for run in reversed(runs)
+            if run.run_type is ScannerRunType.FULL_UNIVERSE_SCAN
+            and run.status is not ScannerRunStatus.SKIPPED
+        ),
+        None,
+    )
+
+
 def _candidate_summary(service: ScannerService) -> ScannerCandidateSummary:
-    latest = service.latest_run()
+    # The candidate table represents discovery by a full-universe scan. An empty
+    # five-minute active refresh must not overwrite that result with zeroes.
+    latest = _latest_full_run(service) or service.latest_run()
     status = service.status()
     if latest is None:
         return ScannerCandidateSummary(state=status.state)
@@ -55,12 +74,16 @@ async def scanner_status(
 
 @router.post("/start", response_model=ScannerStatusResponse)
 async def scanner_start(
+    background_tasks: BackgroundTasks,
     service: ScannerService = Depends(get_scanner_service),  # noqa: B008
     _authorization: MutationAuthorization = Depends(authorize_mutation),  # noqa: B008
 ) -> ScannerStatusResponse:
-    """Enable Scanner only after operator authorization and replay protection."""
+    """Enable Scanner and request the initial full scan without blocking the client."""
 
-    return await service.start()
+    status = await service.start()
+    if _latest_full_run(service) is None:
+        background_tasks.add_task(service.run_now)
+    return status
 
 
 @router.post("/stop", response_model=ScannerStatusResponse)
@@ -117,7 +140,7 @@ async def scanner_candidates(
 async def scanner_latest_run(
     service: ScannerService = Depends(get_scanner_service),  # noqa: B008
 ) -> ScannerRunSummary:
-    """Return the latest Scanner run summary."""
+    """Return the latest Scanner run summary of any type."""
 
     latest = service.latest_run()
     if latest is None:
