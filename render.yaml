@@ -17,7 +17,7 @@ services:
       - key: ASTRAFORGE_CORS_ORIGINS
         sync: false
       - key: ASTRAFORGE_CORS_ALLOW_CREDENTIALS
-        value: "false"
+        value: "true"
       - key: ASTRAFORGE_DATABASE_URL
         sync: false
       - key: ASTRAFORGE_DATABASE_MIGRATE_ON_STARTUP
