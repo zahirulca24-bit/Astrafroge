@@ -2,9 +2,8 @@
  * Scanner lifecycle service — the single source of truth for all scanner
  * operations (status, start, stop, run-now, candidates).
  *
- * Every protected mutation (start, stop, run-now) requires a Bearer token and
- * an Idempotency-Key. If no token is configured, the mutation is not sent and a
- * clear configuration error is thrown instead.
+ * Every protected mutation (start, stop, run-now) requires an authenticated
+ * operator session cookie and an Idempotency-Key.
  */
 
 import {
@@ -15,7 +14,6 @@ import {
   ScannerRunSummary,
 } from "../types";
 import { apiClient, isRecord } from "./apiClient";
-import { authToken } from "./authToken";
 
 interface ScannerAuditRecordDto {
   code: string;
@@ -259,27 +257,21 @@ export const scannerService = {
   },
 
   async start(): Promise<ScannerRuntimeStatus> {
-    const token = authToken.require();
     const data = await apiClient.post<unknown>("/api/v1/scanner/start", {
-      authToken: token,
       idempotent: true,
     });
     return mapScannerStatus(data);
   },
 
   async stop(): Promise<ScannerRuntimeStatus> {
-    const token = authToken.require();
     const data = await apiClient.post<unknown>("/api/v1/scanner/stop", {
-      authToken: token,
       idempotent: true,
     });
     return mapScannerStatus(data);
   },
 
   async runNow(): Promise<ScannerRunSummary> {
-    const token = authToken.require();
     const data = await apiClient.post<unknown>("/api/v1/scanner/run-now", {
-      authToken: token,
       idempotent: true,
     });
     return mapScannerRunSummary(data);

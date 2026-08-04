@@ -18,18 +18,15 @@ from app.core.config import Settings
 from app.core.logging import JsonFormatter
 from app.core.security import (
     MUTATION_OPENAPI_PATHS,
+    OPERATOR_SESSION_COOKIE,
     MutationReplayGuard,
     ReplayClaimResult,
     _valid_token,
 )
 from app.main import create_app
-from app.persistence.models import MutationReplayKeyRow
+from app.persistence.models import MutationReplayKeyRow, OperatorSessionRow
 
 _TOKEN = "astraforge-test-operator-token-2026"
-_VALID_HEADERS = {
-    "Authorization": f"Bearer {_TOKEN}",
-    "Idempotency-Key": "security-test-key-0001",
-}
 
 
 def _settings(*, token: str | None = _TOKEN, auth_required: bool = True) -> Settings:
@@ -40,6 +37,23 @@ def _settings(*, token: str | None = _TOKEN, auth_required: bool = True) -> Sett
         mutation_auth_required=auth_required,
         mutation_api_token=SecretStr(token) if token is not None else None,
     )
+
+
+def _auth_settings(*, token: str | None = _TOKEN, auth_required: bool = True) -> Settings:
+    return Settings(
+        _env_file=None,
+        environment="test",
+        cors_origins=["http://localhost:5173"],
+        cors_allow_credentials=True,
+        mutation_auth_required=auth_required,
+        mutation_api_token=SecretStr(token) if token is not None else None,
+    )
+
+
+def _login(client: TestClient, token: str = _TOKEN) -> None:
+    response = client.post("/api/v1/operator-session/login", json={"operator_token": token})
+    assert response.status_code == 200
+    assert response.json()["status"] == "authenticated"
 
 
 def _error_code(response) -> str:  # type: ignore[no-untyped-def]
@@ -77,25 +91,16 @@ def test_mutation_fails_closed_when_operator_token_is_not_configured() -> None:
     assert _error_code(response) == "MUTATION_AUTH_NOT_CONFIGURED"
 
 
-def test_mutation_requires_valid_bearer_credentials() -> None:
-    with TestClient(create_app(_settings())) as client:
+def test_mutation_requires_valid_operator_session_cookie(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'auth.db'}")
+    with TestClient(create_app(_auth_settings())) as client:
         missing = client.post(
             "/api/v1/scanner/stop",
             headers={"Idempotency-Key": "security-test-key-0003"},
         )
-        invalid = client.post(
-            "/api/v1/scanner/stop",
-            headers={
-                "Authorization": "Bearer wrong-token",
-                "Idempotency-Key": "security-test-key-0004",
-            },
-        )
 
     assert missing.status_code == 401
-    assert invalid.status_code == 401
-    assert missing.headers["www-authenticate"] == "Bearer"
-    assert _error_code(missing) == "INVALID_MUTATION_CREDENTIALS"
-    assert _error_code(invalid) == "INVALID_MUTATION_CREDENTIALS"
+    assert _error_code(missing) == "OPERATOR_SESSION_REQUIRED"
 
 
 def test_non_ascii_bearer_credentials_are_rejected_without_type_error() -> None:
@@ -107,13 +112,120 @@ def test_non_ascii_bearer_credentials_are_rejected_without_type_error() -> None:
     assert _valid_token(credentials, _TOKEN) is False
 
 
-def test_mutation_requires_a_valid_idempotency_key() -> None:
-    authorization = {"Authorization": f"Bearer {_TOKEN}"}
-    with TestClient(create_app(_settings())) as client:
-        missing = client.post("/api/v1/scanner/stop", headers=authorization)
+def test_successful_operator_login_sets_a_cookie(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'auth.db'}")
+    with TestClient(create_app(_auth_settings())) as client:
+        response = client.post("/api/v1/operator-session/login", json={"operator_token": _TOKEN})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "authenticated"
+    assert OPERATOR_SESSION_COOKIE in response.cookies
+
+
+def test_failed_operator_login_is_rejected(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'auth.db'}")
+    with TestClient(create_app(_auth_settings())) as client:
+        response = client.post(
+            "/api/v1/operator-session/login",
+            json={"operator_token": "wrong-token"},
+        )
+
+    assert response.status_code == 401
+    assert _error_code(response) == "INVALID_OPERATOR_CREDENTIALS"
+
+
+def test_rate_limited_operator_login(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'auth.db'}")
+    settings = _auth_settings()
+    settings.operator_login_max_attempts = 2
+    with TestClient(create_app(settings)) as client:
+        first = client.post(
+            "/api/v1/operator-session/login",
+            json={"operator_token": "wrong-token"},
+        )
+        second = client.post(
+            "/api/v1/operator-session/login",
+            json={"operator_token": "wrong-token"},
+        )
+        limited = client.post(
+            "/api/v1/operator-session/login",
+            json={"operator_token": "wrong-token"},
+        )
+
+    assert first.status_code == 401
+    assert second.status_code == 401
+    assert limited.status_code == 429
+    assert _error_code(limited) == "OPERATOR_LOGIN_RATE_LIMITED"
+
+
+def test_session_validation_and_logout(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'auth.db'}")
+    with TestClient(create_app(_auth_settings())) as client:
+        _login(client)
+        validation = client.get("/api/v1/operator-session/status")
+        logout = client.post("/api/v1/operator-session/logout")
+        expired = client.get("/api/v1/operator-session/status")
+
+    assert validation.status_code == 200
+    assert validation.json()["status"] == "authenticated"
+    assert logout.status_code == 204
+    assert expired.status_code == 401
+    assert _error_code(expired) == "OPERATOR_SESSION_REQUIRED"
+
+
+def test_expired_operator_session_is_rejected(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'auth.db'}")
+    app = create_app(_auth_settings())
+    with TestClient(app) as client:
+        _login(client)
+        repository = app.state.trading_state_repositories
+        assert repository is not None
+        session_cookie = client.cookies.get(OPERATOR_SESSION_COOKIE)
+        assert session_cookie is not None
+        session_hash = hashlib.sha256(session_cookie.encode()).hexdigest()
+        with repository.persistence.transaction() as db:
+            row = db.get(OperatorSessionRow, session_hash)
+            assert row is not None
+            row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+
+        validation = client.get("/api/v1/operator-session/status")
+
+    assert validation.status_code == 401
+    assert _error_code(validation) == "OPERATOR_SESSION_EXPIRED"
+
+
+def test_authenticated_protected_mutation(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'auth.db'}")
+    with TestClient(create_app(_auth_settings())) as client:
+        _login(client)
+        response = client.post(
+            "/api/v1/scanner/stop",
+            headers={"Idempotency-Key": "security-test-key-0004"},
+        )
+
+    assert response.status_code == 200
+
+
+def test_session_is_required_for_authenticated_mutation(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'auth.db'}")
+    with TestClient(create_app(_auth_settings())) as client:
+        response = client.post(
+            "/api/v1/scanner/stop",
+            headers={"Idempotency-Key": "security-test-key-0005"},
+        )
+
+    assert response.status_code == 401
+    assert _error_code(response) == "OPERATOR_SESSION_REQUIRED"
+
+
+def test_mutation_requires_a_valid_idempotency_key(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'auth.db'}")
+    with TestClient(create_app(_auth_settings())) as client:
+        _login(client)
+        missing = client.post("/api/v1/scanner/stop")
         invalid = client.post(
             "/api/v1/scanner/stop",
-            headers={**authorization, "Idempotency-Key": "too-short"},
+            headers={"Idempotency-Key": "too-short"},
         )
 
     assert missing.status_code == 400
@@ -122,10 +234,13 @@ def test_mutation_requires_a_valid_idempotency_key() -> None:
     assert _error_code(invalid) == "INVALID_IDEMPOTENCY_KEY"
 
 
-def test_identical_mutation_replay_is_rejected() -> None:
-    with TestClient(create_app(_settings())) as client:
-        first = client.post("/api/v1/scanner/stop", headers=_VALID_HEADERS)
-        replay = client.post("/api/v1/scanner/stop", headers=_VALID_HEADERS)
+def test_identical_mutation_replay_is_rejected(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'auth.db'}")
+    with TestClient(create_app(_auth_settings())) as client:
+        _login(client)
+        headers = {"Idempotency-Key": "security-test-key-0001"}
+        first = client.post("/api/v1/scanner/stop", headers=headers)
+        replay = client.post("/api/v1/scanner/stop", headers=headers)
 
     assert first.status_code == 200
     assert replay.status_code == 409
@@ -134,13 +249,12 @@ def test_identical_mutation_replay_is_rejected() -> None:
     assert replay.headers["x-request-id"]
 
 
-def test_idempotency_key_cannot_be_reused_for_another_mutation() -> None:
+def test_idempotency_key_cannot_be_reused_for_another_mutation(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'auth.db'}")
     trade_id = "00000000-0000-0000-0000-000000000000"
-    headers = {
-        "Authorization": f"Bearer {_TOKEN}",
-        "Idempotency-Key": "security-test-key-0005",
-    }
-    with TestClient(create_app(_settings())) as client:
+    headers = {"Idempotency-Key": "security-test-key-0005"}
+    with TestClient(create_app(_auth_settings())) as client:
+        _login(client)
         first = client.post(
             f"/api/v1/trade-management/close/{trade_id}",
             headers=headers,
@@ -235,7 +349,6 @@ def test_openapi_marks_mutations_as_bearer_protected_with_required_idempotency()
 
     for relative_path in MUTATION_OPENAPI_PATHS:
         operation = document["paths"][f"/api/v1{relative_path}"]["post"]
-        assert operation["security"]
         parameter = _idempotency_parameter(operation)
         assert parameter["required"] is True
         parameter_schema = parameter["schema"]
@@ -247,26 +360,42 @@ def test_openapi_marks_mutations_as_bearer_protected_with_required_idempotency()
     assert "security" not in status_operation
 
 
+def test_operator_session_routes_are_documented() -> None:
+    with TestClient(create_app(_auth_settings())) as client:
+        document = client.get("/api/v1/openapi.json").json()
+
+    login_operation = document["paths"]["/api/v1/operator-session/login"]["post"]
+    status_operation = document["paths"]["/api/v1/operator-session/status"]["get"]
+    logout_operation = document["paths"]["/api/v1/operator-session/logout"]["post"]
+
+    assert login_operation["responses"]["200"]
+    assert status_operation["responses"]["200"]
+    assert logout_operation["responses"]["204"]
+
+
 def test_replay_state_is_durable_across_app_restart(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     database_url = f"sqlite+pysqlite:///{tmp_path / 'replay.db'}"
     monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", database_url)
-    settings = _settings()
+    settings = _auth_settings()
 
     first_app = create_app(settings)
     with TestClient(first_app) as client:
-        first = client.post("/api/v1/scanner/stop", headers=_VALID_HEADERS)
+        _login(client)
+        headers = {"Idempotency-Key": "security-test-key-0001"}
+        first = client.post("/api/v1/scanner/stop", headers=headers)
     assert first.status_code == 200
 
     second_app = create_app(settings)
     with TestClient(second_app) as client:
-        replay = client.post("/api/v1/scanner/stop", headers=_VALID_HEADERS)
+        _login(client)
+        replay = client.post("/api/v1/scanner/stop", headers=headers)
         repository = second_app.state.trading_state_repositories
         assert repository is not None
         row = repository.active_mutation_replay(
-            hashlib.sha256(_VALID_HEADERS["Idempotency-Key"].encode()).hexdigest(),
+            hashlib.sha256(headers["Idempotency-Key"].encode()).hexdigest(),
             now=datetime.now(UTC),
         )
 
@@ -283,15 +412,13 @@ def test_idempotency_key_reuse_for_different_request_is_durable_across_restart(
 ) -> None:
     database_url = f"sqlite+pysqlite:///{tmp_path / 'replay-reuse.db'}"
     monkeypatch.setenv("ASTRAFORGE_DATABASE_URL", database_url)
-    settings = _settings()
-    headers = {
-        "Authorization": f"Bearer {_TOKEN}",
-        "Idempotency-Key": "security-test-key-0099",
-    }
+    settings = _auth_settings()
+    headers = {"Idempotency-Key": "security-test-key-0099"}
     trade_id = "00000000-0000-0000-0000-000000000000"
 
     first_app = create_app(settings)
     with TestClient(first_app) as client:
+        _login(client)
         first = client.post(
             f"/api/v1/trade-management/close/{trade_id}",
             headers=headers,
@@ -301,6 +428,7 @@ def test_idempotency_key_reuse_for_different_request_is_durable_across_restart(
 
     second_app = create_app(settings)
     with TestClient(second_app) as client:
+        _login(client)
         reused = client.post("/api/v1/scanner/stop", headers=headers)
 
     assert reused.status_code == 409

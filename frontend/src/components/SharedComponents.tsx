@@ -504,7 +504,17 @@ export const AppSidebar: React.FC = () => {
 
 // Compact Header
 export const AppHeader: React.FC = () => {
-  const { currentPage, settings, triggerScan, isScanning, scannerStatus, scannerHealth } = useTrading();
+  const {
+    currentPage,
+    settings,
+    triggerScan,
+    isScanning,
+    scannerStatus,
+    scannerHealth,
+    protectedControlsEnabled,
+    protectedControlsReason,
+    operatorSessionState,
+  } = useTrading();
   const scanActionLabel =
     isScanning ? "Working..." : scannerStatus?.state === "OFF" ? "Start Scanner" : "Scan Now";
   const botLabel =
@@ -536,9 +546,9 @@ export const AppHeader: React.FC = () => {
           {(currentPage === "Dashboard" || currentPage === "Scanner") && (
             <button
               onClick={() => triggerScan()}
-              disabled={isScanning || scannerHealth === "Unavailable"}
+              disabled={isScanning || scannerHealth === "Unavailable" || !protectedControlsEnabled}
               className="p-1.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors flex items-center gap-1 text-[11px] font-mono"
-              title="Trigger a backend scanner action"
+              title={protectedControlsEnabled ? "Trigger a backend scanner action" : protectedControlsReason}
             >
               <RefreshCw size={11} className={isScanning ? "animate-spin" : ""} />
               <span>{scanActionLabel}</span>
@@ -564,6 +574,13 @@ export const AppHeader: React.FC = () => {
           title="Demo Only — Live trading is disabled"
         >
           Mode: Demo Only
+        </div>
+
+        <div
+          className={`border px-2.5 py-1 rounded-md text-[11px] font-medium uppercase cursor-help ${operatorSessionState === "authenticated" ? "bg-emerald-950/40 text-emerald-400 border-emerald-900" : operatorSessionState === "expired" ? "bg-amber-950/40 text-amber-400 border-amber-900" : "bg-zinc-900/40 text-zinc-500 border-zinc-800"}`}
+          title={operatorSessionState === "authenticated" ? "Operator session authenticated" : protectedControlsReason}
+        >
+          Operator: {operatorSessionState === "authenticated" ? "AUTHENTICATED" : operatorSessionState === "expired" ? "EXPIRED" : operatorSessionState.toUpperCase()}
         </div>
 
         {/* Automation Status */}

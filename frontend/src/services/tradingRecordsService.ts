@@ -1,6 +1,5 @@
 import { ActiveTrade, JournalTrade, TradingGrade } from "../types";
 import { apiClient, isRecord } from "./apiClient";
-import { authToken } from "./authToken";
 
 function text(record: Record<string, unknown>, key: string, fallback = ""): string {
   const value = record[key];
@@ -127,7 +126,6 @@ export const tradingRecordsService = {
 
   async closeTrade(tradeId: string, reason = "MANUAL_CLOSE"): Promise<void> {
     await apiClient.post(`/api/v1/trade-management/close/${encodeURIComponent(tradeId)}`, {
-      authToken: authToken.require(),
       idempotent: true,
       body: { reason: reason === "INVALIDATED" ? "INVALIDATED" : "MANUAL_CLOSE" },
     });

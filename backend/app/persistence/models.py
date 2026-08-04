@@ -156,3 +156,13 @@ class MutationReplayKeyRow(Base):
     action: Mapped[str] = mapped_column(String(128), nullable=False)
     claimed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class OperatorSessionRow(Base):
+    __tablename__ = "operator_sessions"
+    __table_args__ = (Index("ix_operator_session_expires", "expires_at"),)
+
+    session_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

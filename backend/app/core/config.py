@@ -27,10 +27,13 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
-    cors_allow_credentials: bool = False
+    cors_allow_credentials: bool = True
     database_migrate_on_startup: bool = True
     mutation_auth_required: bool = True
     mutation_api_token: SecretStr | None = None
+    operator_session_ttl_seconds: int = Field(default=43_200, ge=300, le=604_800)
+    operator_login_max_attempts: int = Field(default=5, ge=3, le=20)
+    operator_login_window_seconds: int = Field(default=300, ge=60, le=3_600)
     mutation_replay_ttl_seconds: int = Field(default=900, ge=60, le=86400)
     mutation_replay_cache_limit: int = Field(default=5000, ge=100, le=100000)
     execution_enabled: bool = False
