@@ -31,7 +31,7 @@ services:
       - key: ASTRAFORGE_MUTATION_API_TOKEN
         generateValue: true
       - key: ASTRAFORGE_EXECUTION_ENABLED
-        value: "true"
+        value: "false"
       - key: ASTRAFORGE_SCANNER_AUTO_START
         value: "true"
 
