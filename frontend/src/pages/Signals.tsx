@@ -76,8 +76,14 @@ export const Signals: React.FC = () => {
         <div className="bg-zinc-900 p-2 rounded flex flex-col justify-center text-[10px] text-zinc-500 text-left pl-3 col-span-2 sm:col-span-1">
           <div>Scanner: {scannerHealth.toUpperCase()}</div>
           <div>Updated: {lastUpdated ? new Date(lastUpdated).toLocaleString() : "Unavailable"}</div>
+          <div>Candidate ID: {scannerResults[0]?.candidateId ?? "Unavailable"}</div>
         </div>
       </div>
+      {scannerHealth === "Unavailable" && (
+        <div className="rounded-lg border border-rose-900/60 bg-rose-950/20 px-3 py-2 font-mono text-[11px] text-rose-300">
+          Scanner data is unavailable from the backend.
+        </div>
+      )}
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -141,6 +147,7 @@ export const Signals: React.FC = () => {
                 <div className="pt-2 border-t border-zinc-850 flex flex-col gap-1">
                   <div className={`py-1 rounded text-center font-bold text-[9px] uppercase border ${signal.status === "Ready Now" ? "text-emerald-400 bg-emerald-950/20 border-emerald-900" : signal.status === "Near Setup" ? "text-amber-400 bg-amber-950/20 border-amber-900" : "text-zinc-500 bg-zinc-950 border-zinc-850"}`}>{signal.status}</div>
                   <button onClick={() => handleOpenChart(signal.symbol)} className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold py-1.5 rounded flex items-center justify-center gap-1 text-[10.5px]"><LineChart size={11} /> Open Chart</button>
+                  <div className="text-[9px] text-zinc-500 pt-1">candidate_id: {signal.candidateId ?? "Unavailable"}</div>
                 </div>
               </article>
             );

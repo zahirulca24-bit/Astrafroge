@@ -18,23 +18,27 @@ export interface SymbolInfo {
 }
 
 export interface ScannerResult {
+  candidateId?: string;
+  signalId?: string;
+  riskAssessmentId?: string;
+  executionPlanId?: string;
   symbol: string;
   side: "Long" | "Short";
   currentPrice: number;
   volume24h: number;
-  trend1h: string; // e.g. "Bullish Breakout", "Bearish Trend"
-  setup15m: string; // e.g. "EMA Ribbon Pullback", "Support Bounce"
-  entry5m: string; // e.g. "Volume Confirmed", "Pending Alignment"
+  trend1h: string;
+  setup15m: string;
+  entry5m: string;
   grade: TradingGrade;
-  score: number; // 0 - 100
-  riskReward: number; // e.g. 3.2 (meaning 1:3.2)
+  score: number;
+  riskReward: number;
   status: "Ready Now" | "Near Setup" | "Rejected";
   entryZone: string;
   stopLoss: number;
   tp1: number;
   tp2: number;
   tp3: number;
-  confidence: number; // percentage, e.g. 88
+  confidence: number;
   setupReasons: string[];
   rejectionReasons?: string[];
   riskWarnings?: string[];
@@ -102,23 +106,26 @@ export type TradeStatus =
 
 export interface ActiveTrade {
   id: string;
+  signalId?: string;
+  executionPlanId?: string;
+  backendAuthoritative?: boolean;
   symbol: string;
   side: "Long" | "Short";
   grade: TradingGrade;
   score: number;
   entryPrice: number;
   currentPrice: number;
-  positionSize: number; // in tokens
+  positionSize: number;
   leverage: number;
-  marginUsed: number; // USD
-  unrealizedPnL: number; // USD
-  unrealizedPnLPercent: number; // %
+  marginUsed: number;
+  unrealizedPnL: number;
+  unrealizedPnLPercent: number;
   stopLoss: number;
   tp1: number;
   tp2: number;
   tp3: number;
   currentRMultiple: number;
-  duration: string; // e.g., "02h 15m"
+  duration: string;
   setupName: string;
   status: TradeStatus;
   openedAt: string;
@@ -140,6 +147,9 @@ export interface ActiveTrade {
 
 export interface JournalTrade {
   id: string;
+  signalId?: string;
+  tradeId?: string;
+  backendAuthoritative?: boolean;
   date: string;
   symbol: string;
   side: "Long" | "Short";
@@ -162,7 +172,6 @@ export interface JournalTrade {
   orderId?: string;
 }
 
-// Settings structures
 export interface BinanceConnectionSettings {
   connected: boolean;
   environment: "Demo Only";
