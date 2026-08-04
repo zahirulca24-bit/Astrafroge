@@ -31,9 +31,9 @@ services:
       - key: ASTRAFORGE_MUTATION_API_TOKEN
         generateValue: true
       - key: ASTRAFORGE_EXECUTION_ENABLED
-        value: "false"
+        value: "true"
       - key: ASTRAFORGE_SCANNER_AUTO_START
-        value: "false"
+        value: "true"
 
   - type: web
     name: astraforge-frontend
