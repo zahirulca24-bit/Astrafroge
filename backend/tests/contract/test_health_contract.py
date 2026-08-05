@@ -72,6 +72,7 @@ def test_openapi_contains_verified_runtime_routes(client: TestClient) -> None:
         "/api/v1/risk/assessments",
         "/api/v1/risk/status",
         "/api/v1/scanner/candidates",
+        "/api/v1/scanner/early-watch",
         "/api/v1/scanner/run-now",
         "/api/v1/scanner/runs/latest",
         "/api/v1/scanner/start",
