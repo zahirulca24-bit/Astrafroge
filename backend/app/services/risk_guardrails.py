@@ -14,7 +14,7 @@ from sqlalchemy import select
 from app.core.config import Settings
 from app.persistence.models import TradeRow
 from app.persistence.repositories import TradingStateRepositories
-from app.schemas.risk import RiskAssessment, RiskAssessmentList, RiskDecision
+from app.schemas.risk import RiskAssessment, RiskDecision, RiskRejectionCode
 from app.services.risk import RiskPrivateClient, RiskService, _AccountSnapshot
 from app.services.signals import SignalService
 
@@ -105,8 +105,7 @@ class RiskGuardrailPolicy:
                 raise ValueError(f"{name} must be between {minimum} and {maximum}")
             return value
 
-        raw_rr = os.getenv("ASTRAFORGE_RISK_MINIMUM_RR", "2")
-        rr = Decimal(raw_rr)
+        rr = Decimal(os.getenv("ASTRAFORGE_RISK_MINIMUM_RR", "2"))
         if rr <= 0 or rr > 20:
             raise ValueError("ASTRAFORGE_RISK_MINIMUM_RR must be greater than 0 and at most 20")
         emergency = os.getenv("ASTRAFORGE_RISK_EMERGENCY_STOP", "false").strip().lower()
@@ -144,11 +143,13 @@ class GuardedRiskService(RiskService):
         self._guardrail_state = state_provider or EmptyRiskGuardrailStateProvider()
         self._guardrail_policy = policy or RiskGuardrailPolicy.from_environment()
 
-    def assessments(self) -> RiskAssessmentList:
-        snapshot, snapshot_error = self._snapshot_or_error()
-        assessments = self._build_assessments(snapshot, snapshot_error)
-        guarded = self._apply_guardrails(assessments, snapshot)
-        return RiskAssessmentList(count=len(guarded), assessments=guarded)
+    def _build_assessments(
+        self,
+        snapshot: _AccountSnapshot | None,
+        snapshot_error: RiskRejectionCode | None,
+    ) -> list[RiskAssessment]:
+        base = super()._build_assessments(snapshot, snapshot_error)
+        return self._apply_guardrails(base, snapshot)
 
     def _apply_guardrails(
         self,
