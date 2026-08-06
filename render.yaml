@@ -30,6 +30,18 @@ services:
         generateValue: true
       - key: ASTRAFORGE_EXECUTION_ENABLED
         value: "false"
+      - key: ASTRAFORGE_EXECUTION_TAKE_PROFIT_R_MULTIPLE
+        value: "2"
+      - key: ASTRAFORGE_RISK_PER_TRADE_PERCENT
+        value: "0.25"
+      - key: ASTRAFORGE_RISK_DAILY_LOSS_LIMIT_PERCENT
+        value: "2"
+      - key: ASTRAFORGE_RISK_DAILY_PROFIT_LOCK_PERCENT
+        value: "5"
+      - key: ASTRAFORGE_RISK_MAX_OPEN_TRADES
+        value: "4"
+      - key: ASTRAFORGE_RISK_MAX_MARGIN_EXPOSURE_USDT
+        value: "1000"
       - key: ASTRAFORGE_SCANNER_AUTO_START
         value: "true"
 
