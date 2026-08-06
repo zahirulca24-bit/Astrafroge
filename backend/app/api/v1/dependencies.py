@@ -9,7 +9,6 @@ from app.persistence.repositories import TradingStateRepositories
 from app.persistence.scanner_state import PersistentScannerService, ScannerRuntimeStateStore
 from app.persistence.service_adapters import (
     PersistentExecutionService,
-    PersistentRiskService,
     PersistentSignalService,
 )
 from app.services.execution import DemoExecutionService
