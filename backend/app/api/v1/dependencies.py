@@ -6,6 +6,7 @@ from app.core.config import get_settings
 from app.integrations.binance.private_demo_client import BinanceDemoPrivateClient
 from app.integrations.binance.public_client import BinancePublicClient
 from app.persistence.repositories import TradingStateRepositories
+from app.persistence.scanner_state import PersistentScannerService, ScannerRuntimeStateStore
 from app.persistence.service_adapters import (
     PersistentExecutionService,
     PersistentRiskService,
@@ -29,6 +30,7 @@ def configure_runtime_repositories(repositories: TradingStateRepositories | None
 
     global _runtime_repositories
     _runtime_repositories = repositories
+    get_scanner_service.cache_clear()
     get_signal_service.cache_clear()
     get_risk_service.cache_clear()
     get_execution_service.cache_clear()
@@ -102,12 +104,18 @@ def get_indicator_service() -> IndicatorService:
 
 @lru_cache
 def get_scanner_service() -> ScannerService:
-    """Build one process-scoped deterministic Scanner runtime."""
+    """Build the Scanner runtime with durable recovery when configured."""
 
-    return ScannerService(
+    args = (
         get_market_service(),
         get_universe_service(),
         get_indicator_service(),
+    )
+    if _runtime_repositories is None:
+        return ScannerService(*args)
+    return PersistentScannerService(
+        *args,
+        state_store=ScannerRuntimeStateStore(_runtime_repositories.persistence),
     )
 
 
