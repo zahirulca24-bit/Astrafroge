@@ -17,6 +17,10 @@ from app.services.indicators import IndicatorService
 from app.services.journal_performance import JournalPerformanceService
 from app.services.market_data import MarketDataService
 from app.services.risk import RiskService
+from app.services.risk_guardrails import (
+    GuardedRiskService,
+    RepositoryRiskGuardrailStateProvider,
+)
 from app.services.scanner import ScannerService
 from app.services.signals import SignalService
 from app.services.trade_management import TradeManagementService
@@ -131,18 +135,18 @@ def get_signal_service() -> SignalService:
 
 @lru_cache
 def get_risk_service() -> RiskService:
-    """Build the account-backed Risk Engine with durable decision audit records."""
+    """Build the account-backed Risk Engine with complete fail-closed guardrails."""
 
     signal_service = get_signal_service()
     settings = get_settings()
     private_client = get_private_demo_client()
     if _runtime_repositories is None:
-        return RiskService(signal_service, settings, private_client)
-    return PersistentRiskService(
+        return GuardedRiskService(signal_service, settings, private_client)
+    return GuardedRiskService(
         signal_service,
         settings,
         private_client,
-        _runtime_repositories,
+        state_provider=RepositoryRiskGuardrailStateProvider(_runtime_repositories),
     )
 
 
