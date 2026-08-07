@@ -23,10 +23,11 @@ AstraForge is packaged as one repository with two deployable services:
 - Signal Engine backend exists and is sourced from Scanner candidates.
 - Operator-token authentication has been removed by explicit owner-approved configuration.
 - Scanner & Signals **Phase 1 — Data Contract Alignment** merged in PR #21; CI Run #66 passed.
+- Scanner & Signals **Phase 2 — Scanner Table Rebuild** merged in PR #22; final CI Run #71 passed.
 
 ### Current validation focus
 
-**Phase 2 — Scanner Table Rebuild is active.** Scanner and Signal work must be completed backend + frontend together in every phase. No phase is considered complete with only one side implemented.
+**Phase 3 — Signal Card Integration is active.** Scanner and Signal work must be completed backend + frontend together in every phase. No phase is considered complete with only one side implemented.
 
 ## Locked Scanner & Signals layout
 
@@ -60,22 +61,23 @@ Mobile/tablet may stack responsively, but desktop remains 50/50.
 - Real backend Signal Engine client exists for the next signal-card phase.
 - Backend + frontend regression coverage added.
 
-### 🚧 Phase 2 — Scanner Table Rebuild — IN PROGRESS
+### ✅ Phase 2 — Scanner Table Rebuild — COMPLETE
 
-- Backend exposes authoritative latest full-scan table rows.
-- Build the reusable left 50% Scanner table panel.
-- Render all evaluated rows, including Ready, Near Setup, Rejected and Failed.
-- Add symbol/side/status/strategy filters and rank/score/confidence/status sorting.
-- Show rejection/failure reason and chart action.
-- Counts come directly from the backend table contract; frontend must not invent rejected totals.
-- Keep scanner formulas, strategy thresholds, risk rules and execution rules unchanged.
+- Backend exposes authoritative latest full-scan table rows through `/api/v1/scanner/evaluations/latest`.
+- Reusable Scanner table panel consumes backend authoritative counts and statuses.
+- Ready, Near Setup, Rejected and Failed rows remain visible.
+- Symbol/side/status/strategy filters and sorting are implemented.
+- Rejection/failure reason and chart action are exposed.
+- Scanner formulas, strategy thresholds, risk rules and execution rules were not changed.
 
-### Phase 3 — Signal Card Integration
+### 🚧 Phase 3 — Signal Card Integration — IN PROGRESS
 
-- Build the right 50% Signal card panel.
-- Source cards only from `/api/v1/signals` and Signal Engine status.
-- Render A+, A, and B+ Watch states with backend-provided identity and lifecycle.
-- Do not promote rejected scanner rows into signal cards.
+- Backend provides card-eligible Signal Engine records only: A+/A ACTIVE and B+ WATCH.
+- Build the reusable right 50% Signal card panel.
+- Source cards only from backend Signal Engine endpoints.
+- Render grade, lifecycle, strategy, entry, backend stop when available, score, confidence, rationale, candidate ID and signal ID.
+- TP/R:R must remain unavailable until an authoritative backend value exists; frontend must not invent them.
+- Rejected/invalidated/expired/risk-blocked records do not become normal signal cards.
 
 ### Phase 4 — Cross-Link Scanner ↔ Signal
 
