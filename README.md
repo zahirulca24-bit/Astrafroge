@@ -25,10 +25,11 @@ AstraForge is packaged as one repository with two deployable services:
 - Scanner & Signals **Phase 1 — Data Contract Alignment** merged in PR #21; CI Run #66 passed.
 - Scanner & Signals **Phase 2 — Scanner Table Rebuild** merged in PR #22; final CI Run #71 passed.
 - Scanner & Signals **Phase 3 — Signal Card Integration** merged in PR #23; CI Run #73 passed.
+- Scanner & Signals **Phase 4 — Cross-Link Scanner ↔ Signal** merged in PR #24; CI Run #75 passed.
 
 ### Current validation focus
 
-**Phase 4 — Cross-Link Scanner ↔ Signal is active.** Scanner and Signal work must be completed backend + frontend together in every phase. No phase is considered complete with only one side implemented.
+**Phase 5 — UI Consolidation is active.** Scanner and Signal work must remain backend-authoritative and the merged page must preserve the existing Phase 2–4 contracts without introducing local/fabricated signal truth.
 
 ## Locked Scanner & Signals layout
 
@@ -49,7 +50,7 @@ Desktop layout is a 50/50 split:
   - candidate ID + signal ID
   - no fabricated signal cards
 
-Mobile/tablet may stack responsively, but desktop remains 50/50.
+Mobile/tablet stack responsively; desktop remains side-by-side 50/50.
 
 ## Locked implementation roadmap
 
@@ -59,7 +60,7 @@ Mobile/tablet may stack responsively, but desktop remains 50/50.
 - Universe rank is preserved for rejected/failed rows.
 - Candidate identity and signal identity remain separate but linked.
 - Frontend scanner mapping is tied to the latest full-run contract.
-- Real backend Signal Engine client exists for the next signal-card phase.
+- Real backend Signal Engine client exists.
 - Backend + frontend regression coverage added.
 
 ### ✅ Phase 2 — Scanner Table Rebuild — COMPLETE
@@ -79,25 +80,29 @@ Mobile/tablet may stack responsively, but desktop remains 50/50.
 - TP/R:R remain unavailable until authoritative backend values exist; frontend does not invent them.
 - Rejected/invalidated/expired/risk-blocked records do not become normal signal cards.
 
-### 🚧 Phase 4 — Cross-Link Scanner ↔ Signal — IN PROGRESS
+### ✅ Phase 4 — Cross-Link Scanner ↔ Signal — COMPLETE
 
-- Backend exposes deterministic card linkage by candidate ID and signal ID.
-- Scanner row selection must target only a real linked Signal record when one exists.
-- Signal card selection must target the exact scanner candidate by candidate ID.
-- Shared selection state persists across the current standalone pages and will work directly when Phase 5 places both panels side by side.
-- No fake candidate/signal relation may be created.
+- Backend exposes deterministic card linkage through `/api/v1/signals/links`.
+- Scanner row selection targets only a real linked Signal record.
+- Signal card selection targets the exact scanner candidate by candidate ID.
+- Shared selection state highlights the same candidate across both panels.
+- No fake candidate/signal relation is created.
 
-### Phase 5 — UI Consolidation
+### 🚧 Phase 5 — UI Consolidation — IN PROGRESS
 
-- Replace standalone Scanner and Signals navigation with **Scanner & Signals**.
-- Desktop 50/50 split; responsive stacked mobile layout.
-- Remove duplicate standalone-page behavior after the merged page is verified.
+- Replace the standalone Scanner/Signals content flow with one **Scanner & Signals** page.
+- Render `ScannerTablePanel` and `SignalCardsPanel` side by side on desktop.
+- Preserve responsive stacked layout on smaller screens.
+- Keep legacy internal Scanner/Signals routing compatible while exposing one user-facing Scanner & Signals navigation entry.
+- Reuse the backend Scanner table, Signal cards and Signal links contracts without modifying strategy/risk/execution behavior.
+- Add frontend layout/navigation regression coverage and backend route-contract regression coverage.
 
 ### Phase 6 — QA & Validation
 
 - Verify 50 scanner rows for a 50-symbol selected universe.
 - Verify Ready / Near / Rejected / Failed counts.
 - Verify qualified scanner candidate → Signal Engine record → Signal card.
+- Verify row/card cross-highlighting.
 - Verify no fake/local-derived signals.
 - Verify refresh/auto-scan and backend-unavailable states.
 - Run backend + frontend regression tests before merge.

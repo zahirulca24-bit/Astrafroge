@@ -3,8 +3,7 @@ import { TradingProvider, useTrading } from "./store/TradingStore";
 import { AppSidebar, AppHeader } from "./components/SharedComponents";
 
 const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
-const Scanner = lazy(() => import("./pages/Scanner").then((m) => ({ default: m.Scanner })));
-const Signals = lazy(() => import("./pages/Signals").then((m) => ({ default: m.Signals })));
+const ScannerSignals = lazy(() => import("./pages/ScannerSignals").then((m) => ({ default: m.ScannerSignals })));
 const ChartPage = lazy(() => import("./pages/ChartPage").then((m) => ({ default: m.ChartPage })));
 const ActiveTrades = lazy(() => import("./pages/ActiveTrades").then((m) => ({ default: m.ActiveTrades })));
 const Journal = lazy(() => import("./pages/Journal").then((m) => ({ default: m.Journal })));
@@ -23,15 +22,15 @@ function PageLoader() {
 
 function AppContent() {
   const { currentPage, tradingRecordsLoading, tradingRecordsError } = useTrading();
+  const isScannerSignals = currentPage === "Scanner" || currentPage === "Signals";
 
   const renderPage = () => {
     switch (currentPage) {
       case "Dashboard":
         return <Dashboard />;
       case "Scanner":
-        return <Scanner />;
       case "Signals":
-        return <Signals />;
+        return <ScannerSignals />;
       case "Chart & Watchlist":
         return <ChartPage />;
       case "Active Trades":
@@ -45,10 +44,20 @@ function AppContent() {
     }
   };
 
+  const displayPage = isScannerSignals ? "Scanner & Signals" : currentPage;
+
   return (
-    <div className="flex flex-col md:flex-row h-screen w-screen overflow-hidden bg-black text-zinc-100 font-sans">
+    <div className={`phase5-navigation flex flex-col md:flex-row h-screen w-screen overflow-hidden bg-black text-zinc-100 font-sans ${isScannerSignals ? "scanner-signals-active" : ""}`}>
+      <style>{`
+        .phase5-navigation nav > button:nth-child(3) { display: none; }
+        .phase5-navigation nav > button:nth-child(2) > span { font-size: 0; }
+        .phase5-navigation nav > button:nth-child(2) > span::after { content: "Scanner & Signals"; font-size: 0.75rem; }
+        .scanner-signals-active header h1 { font-size: 0; }
+        .scanner-signals-active header h1::after { content: "Scanner & Signals"; font-size: 0.875rem; }
+      `}</style>
       <AppSidebar />
       <div className="flex flex-col flex-1 h-full overflow-hidden">
+        <div className="sr-only" aria-live="polite">{displayPage}</div>
         <AppHeader />
         <main className="flex-1 overflow-y-auto p-4 bg-zinc-950">
           <div className="w-full pb-8">
