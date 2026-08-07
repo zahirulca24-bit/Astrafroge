@@ -4,7 +4,6 @@ import { AppSidebar, AppHeader } from "./components/SharedComponents";
 
 const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
 const Scanner = lazy(() => import("./pages/Scanner").then((m) => ({ default: m.Scanner })));
-const EarlyWatchPanel = lazy(() => import("./pages/EarlyWatchPanel").then((m) => ({ default: m.EarlyWatchPanel })));
 const Signals = lazy(() => import("./pages/Signals").then((m) => ({ default: m.Signals })));
 const ChartPage = lazy(() => import("./pages/ChartPage").then((m) => ({ default: m.ChartPage })));
 const ActiveTrades = lazy(() => import("./pages/ActiveTrades").then((m) => ({ default: m.ActiveTrades })));
@@ -30,12 +29,7 @@ function AppContent() {
       case "Dashboard":
         return <Dashboard />;
       case "Scanner":
-        return (
-          <>
-            <EarlyWatchPanel />
-            <Scanner />
-          </>
-        );
+        return <Scanner />;
       case "Signals":
         return <Signals />;
       case "Chart & Watchlist":
