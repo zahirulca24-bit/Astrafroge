@@ -3,63 +3,122 @@
 AstraForge is packaged as one repository with two deployable services:
 
 - `frontend/`: React + TypeScript + Vite static site
-- `backend/`: FastAPI API, scanner runtime, and Binance Demo integration
+- `backend/`: FastAPI API, scanner runtime, signal engine, risk/execution services, and Binance Demo integration
 - `render.yaml`: Render Blueprint for frontend, backend, and PostgreSQL
 
 ## Current project status
 
-**Date:** 04 August 2026  
-**Day:** Tuesday  
+**Date:** 08 August 2026  
 **Environment:** Render production deployment  
 **Mode:** Binance Demo only
 
 ### Verified working
 
-- Frontend deployed on Render.
-- FastAPI backend deployed on Render.
-- Render PostgreSQL database created and connected.
-- Backend health endpoint returns `200 OK`.
-- Frontend-to-backend CORS connection is working.
-- Binance public USD-M Futures market data is connected.
-- Backend universe endpoint reports 852 total symbols and 50 tradable symbols.
-- BTC/USDT chart and market indicators load in the frontend.
-- Binance Demo private API is connected.
-- Demo account endpoint reports `demo_private_execution_ready: true` and `can_trade: true`.
-- Demo wallet balance, available margin, and open positions are displayed in the frontend.
-- Protected scanner mutations require the Render operator token.
-- PR #3 was merged to fix operator-token sharing across lazy-loaded frontend modules.
+- Frontend and FastAPI backend are deployed on Render.
+- Render PostgreSQL is connected.
+- Binance public USD-M Futures market data is available again after the market-data recovery work.
+- BTC/USDT candles and market indicators load in the frontend.
+- Universe selection returns 50 tradable symbols for scanner evaluation.
+- Scanner runtime is running and returning deterministic audit/rejection reasons.
+- Signal Engine backend exists and is sourced from Scanner candidates.
+- Operator-token authentication has been removed by explicit owner-approved configuration.
 
-### Pending verification
+### Current validation focus
 
-- Wait for the merged PR #3 frontend deployment to complete on Render.
-- Hard-refresh the frontend.
-- Open **Settings → Backend Integration** and set the operator mutation token again for the browser session.
-- Confirm **Start Scanner** sends `POST /api/v1/scanner/start`.
-- Verify `/api/v1/scanner/status` changes from `OFF` to `ON`.
-- Verify the first full-universe scanner run completes.
-- Verify candidates and signals are generated and persisted.
-- Keep demo execution disabled until scanner, signal, risk, and order-lifecycle verification passes.
+The next locked UI/data milestone is the merged **Scanner & Signals** page. Scanner and Signal must be completed backend + frontend together in every phase. No phase is considered complete with only one side implemented.
 
-## Next session starting point
+## Locked Scanner & Signals layout
 
-1. Confirm the latest frontend Render deployment is live.
-2. Set the operator token in the frontend session.
-3. Click **Start Scanner** while Chrome DevTools Network is open.
-4. Verify the authenticated request and response for:
+Desktop layout is a 50/50 split:
+
+- **Left 50% — Scanner Table**
+  - latest selected/evaluated universe rows
+  - Ready / Near Setup / Rejected / Failed state
+  - 1H trend, 15M setup, 5M entry
+  - strategy/setup, score, confidence, R:R
+  - rejection/audit reason
+  - chart action
+- **Right 50% — Signal Cards**
+  - backend Signal Engine records only
+  - A+ / A actionable signals
+  - B+ Watch
+  - entry, stop, targets, R:R, rationale
+  - candidate ID + signal ID
+  - no fabricated signal cards
+
+Mobile/tablet may stack responsively, but desktop remains 50/50.
+
+## Locked implementation roadmap
+
+### Phase 1 — Data Contract Alignment
+
+- Make the latest scanner run expose one authoritative per-symbol evaluation truth, including rejected/failed symbols.
+- Preserve universe rank so the frontend can render the selected 50 in scanner order.
+- Keep candidate identity and signal identity separate but linked.
+- Frontend consumes the backend scanner contract instead of calculating rejected totals locally.
+- Frontend connects to the real backend Signal Engine contract.
+- Add regression tests for scanner-row and signal-contract mapping.
+
+### Phase 2 — Scanner Table Rebuild
+
+- Build the left 50% Scanner table.
+- Render all selected/evaluated rows, including rejected and failed rows.
+- Add filters, sort, rejection/audit reason, chart action, and independent scrolling.
+- Rejected and failed totals must come from the authoritative latest-run contract.
+
+### Phase 3 — Signal Card Integration
+
+- Build the right 50% Signal card panel.
+- Source cards only from `/api/v1/signals` and Signal Engine status.
+- Render A+, A, and B+ Watch states with backend-provided identity and lifecycle.
+- Do not promote rejected scanner rows into signal cards.
+
+### Phase 4 — Cross-Link Scanner ↔ Signal
+
+- Scanner row click highlights its related Signal card when one exists.
+- Signal card click highlights its scanner row.
+- Candidate ID ↔ Signal ID linkage remains deterministic.
+
+### Phase 5 — UI Consolidation
+
+- Replace standalone Scanner and Signals navigation with **Scanner & Signals**.
+- Desktop 50/50 split; responsive stacked mobile layout.
+- Remove duplicate standalone-page behavior after the merged page is verified.
+
+### Phase 6 — QA & Validation
+
+- Verify 50 scanner rows for a 50-symbol selected universe.
+- Verify Ready / Near / Rejected / Failed counts.
+- Verify qualified scanner candidate → Signal Engine record → Signal card.
+- Verify no fake/local-derived signals.
+- Verify refresh/auto-scan and backend-unavailable states.
+- Run backend + frontend regression tests before merge.
+
+## Locked navigation target
 
 ```text
-POST /api/v1/scanner/start
+Dashboard
+→ Scanner & Signals
+→ Chart & Watchlist
+→ Trades & Journal
+→ Backtest
+→ Settings
 ```
 
-5. Recheck:
+`Trades & Journal` will default to today's active and closed trades; older closed trades remain available in Journal history. Every closed trade must retain a close reason, and SL-hit trades must preserve evidence-backed post-trade reason when available rather than inventing one.
 
-```text
-GET /api/v1/scanner/status
-GET /api/v1/scanner/candidates
-GET /api/v1/signals
-```
+`Backtest` is a separate page immediately before Settings.
 
-6. Review backend logs if the scanner remains `OFF` or the scan fails.
+## Phase boundary
+
+Scanner & Signals implementation must not silently change:
+
+- scanner formulas
+- strategy thresholds
+- risk rules
+- execution rules
+
+Any later change to those engines requires a separate reviewed task.
 
 ## Production URLs
 
@@ -69,46 +128,20 @@ Backend:  https://astraforge-backend.onrender.com
 Health:   https://astraforge-backend.onrender.com/api/v1/health/live
 ```
 
-## Render environment naming
-
-The Binance Demo variables expected by the backend are:
-
-```text
-ASTRAFORGE_BINANCE_DEMO_BASE_URL=https://demo-fapi.binance.com
-ASTRAFORGE_BINANCE_DEMO_API_KEY=<secret>
-ASTRAFORGE_BINANCE_DEMO_API_SECRET=<secret>
-```
-
-Protected scanner actions use:
-
-```text
-ASTRAFORGE_MUTATION_AUTH_REQUIRED=true
-ASTRAFORGE_MUTATION_API_TOKEN=<secret>
-```
-
-Never place private API keys, secrets, or the mutation token in frontend `VITE_*` variables.
-
 ## Safety defaults
 
-- Demo execution is disabled by default.
-- Scanner auto-start is disabled on the API web service.
-- Mutation authentication is required.
-- The operator token is entered at runtime and remains memory-only in the browser.
+- Demo execution remains disabled until the end-to-end scanner → signal → risk → execution workflow is verified.
 - Exchange credentials remain backend-only.
-- The frontend displays unavailable states instead of fabricated market, scanner, account, or PnL data.
+- The frontend must display unavailable/empty states instead of fabricated market, scanner, signal, trade, or PnL data.
 
 ## Local start on Windows
 
-Double-click `START_APP.bat`. The script starts:
+Double-click `START_APP.bat`.
 
 - Backend: `http://localhost:8000`
 - Frontend: `http://localhost:5173`
 
-The backend can run locally without persistence, but database-backed features require `ASTRAFORGE_DATABASE_URL` in `backend/.env`.
-
-## Render deployment
-
-Read `RENDER_DEPLOY_GUIDE.md`. The repository root contains the Render Blueprint configuration.
+Database-backed features require `ASTRAFORGE_DATABASE_URL` in `backend/.env`.
 
 ## Verification commands
 

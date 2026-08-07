@@ -42,14 +42,15 @@ def _latest_full_run(service: ScannerService) -> ScannerRunSummary | None:
 
 
 def _candidate_summary(service: ScannerService) -> ScannerCandidateSummary:
-    # The candidate table represents discovery by a full-universe scan. An empty
-    # five-minute active refresh must not overwrite that result with zeroes.
+    """Expose the latest full-scan truth used by the merged Scanner & Signals UI."""
+
     latest = _latest_full_run(service) or service.latest_run()
     status = service.status()
     if latest is None:
         return ScannerCandidateSummary(state=status.state)
     return ScannerCandidateSummary(
         state=status.state,
+        run_id=latest.run_id,
         run_status=latest.status,
         run_type=latest.run_type,
         run_started_at=latest.run_started_at,
@@ -116,7 +117,7 @@ async def scanner_candidates(
     setup: Annotated[ScannerSetup | None, Query()] = None,
     lifecycle: Annotated[CandidateLifecycle | None, Query()] = None,
 ) -> ScannerCandidateList:
-    """Return filtered deterministic Scanner candidates."""
+    """Return filtered deterministic Scanner candidates and latest full-run audit truth."""
 
     normalized_symbol = symbol.strip().upper() if symbol is not None else None
     if normalized_symbol is not None and (

@@ -1,9 +1,6 @@
 /**
- * Scanner lifecycle service — the single source of truth for all scanner
- * operations (status, start, stop, run-now, candidates).
- *
- * Every protected mutation (start, stop, run-now) requires an authenticated
- * operator session cookie and an Idempotency-Key.
+ * Scanner lifecycle service — backend scanner truth for status, mutations,
+ * latest full-universe evaluation rows, and deterministic candidates.
  */
 
 import {
@@ -19,6 +16,9 @@ interface ScannerAuditRecordDto {
   code: string;
   detail: string;
   symbol?: string | null;
+  universe_rank?: number | null;
+  direction?: "LONG" | "SHORT" | null;
+  setup?: string | null;
   timeframe?: string | null;
 }
 
@@ -90,6 +90,7 @@ interface ScannerCandidatesResponseDto {
 
 interface ScannerCandidateSummaryDto {
   state?: "OFF" | "ON" | null;
+  run_id?: string | null;
   run_status?: "RUNNING" | "COMPLETED" | "DEGRADED" | "FAILED" | "SKIPPED" | null;
   run_type?: "FULL_UNIVERSE_SCAN" | "ACTIVE_CANDIDATE_REFRESH" | null;
   run_started_at?: string | null;
@@ -103,6 +104,25 @@ interface ScannerCandidateSummaryDto {
   qualified_candidates?: number;
   audits?: ScannerAuditRecordDto[];
 }
+
+const SYMBOL_DATA_FAILURE_CODES = new Set([
+  "MISSING_1H_CANDLES",
+  "MISSING_15M_CANDLES",
+  "MISSING_5M_CANDLES",
+  "INSUFFICIENT_1H_HISTORY",
+  "INSUFFICIENT_15M_HISTORY",
+  "INSUFFICIENT_5M_HISTORY",
+  "STALE_1H_DATA",
+  "STALE_15M_DATA",
+  "STALE_5M_DATA",
+  "INVALID_1H_OHLCV",
+  "INVALID_15M_OHLCV",
+  "INVALID_5M_OHLCV",
+  "MISSING_REQUIRED_INDICATOR",
+  "INDICATOR_CALCULATION_FAILED",
+  "STRUCTURE_INSUFFICIENT",
+  "UNIVERSE_ELIGIBILITY_FAILED",
+]);
 
 function parseFiniteNumber(value: unknown, fieldName: string): number {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -120,17 +140,25 @@ function maybeParseFiniteNumber(value: unknown): number | null {
 function readNumber(record: Record<string, unknown>, ...keys: string[]): number | null {
   for (const key of keys) {
     const parsed = maybeParseFiniteNumber(record[key]);
-    if (parsed !== null) {
-      return parsed;
-    }
+    if (parsed !== null) return parsed;
   }
   return null;
 }
 
+function mapAudit(dto: ScannerAuditRecordDto): ScannerAuditRecord {
+  return {
+    code: typeof dto.code === "string" ? dto.code : "UNKNOWN",
+    detail: typeof dto.detail === "string" && dto.detail.trim() ? dto.detail : "No detail provided",
+    symbol: typeof dto.symbol === "string" ? dto.symbol : null,
+    universeRank: maybeParseFiniteNumber(dto.universe_rank),
+    direction: dto.direction === "LONG" || dto.direction === "SHORT" ? dto.direction : null,
+    setup: typeof dto.setup === "string" ? dto.setup : null,
+    timeframe: typeof dto.timeframe === "string" ? dto.timeframe : null,
+  };
+}
+
 function mapScannerRunSummary(data: unknown): ScannerRunSummary {
-  if (!isRecord(data)) {
-    throw new Error("Invalid scanner run summary response");
-  }
+  if (!isRecord(data)) throw new Error("Invalid scanner run summary response");
   const dto = data as unknown as ScannerRunSummaryDto;
   if (
     typeof dto.run_id !== "string" ||
@@ -155,19 +183,7 @@ function mapScannerRunSummary(data: unknown): ScannerRunSummary {
     updatedCandidates: parseFiniteNumber(dto.updated_candidates ?? 0, "updated_candidates"),
     qualifiedCandidates: parseFiniteNumber(dto.qualified_candidates ?? 0, "qualified_candidates"),
     audits: Array.isArray(dto.audits)
-      ? dto.audits
-          .filter((audit): audit is ScannerAuditRecordDto => isRecord(audit))
-          .map(
-            (audit): ScannerAuditRecord => ({
-              code: typeof audit.code === "string" ? audit.code : "UNKNOWN",
-              detail:
-                typeof audit.detail === "string" && audit.detail.trim()
-                  ? audit.detail
-                  : "No detail provided",
-              symbol: typeof audit.symbol === "string" ? audit.symbol : null,
-              timeframe: typeof audit.timeframe === "string" ? audit.timeframe : null,
-            }),
-          )
+      ? dto.audits.filter((audit): audit is ScannerAuditRecordDto => isRecord(audit)).map(mapAudit)
       : [],
   };
 }
@@ -179,11 +195,9 @@ function mapScannerCandidateSummary(data: unknown): ScannerRunSummary | null {
     typeof dto.run_status !== "string" ||
     typeof dto.run_type !== "string" ||
     typeof dto.run_started_at !== "string"
-  ) {
-    return null;
-  }
+  ) return null;
   return mapScannerRunSummary({
-    run_id: "latest-summary",
+    run_id: typeof dto.run_id === "string" ? dto.run_id : "latest-summary",
     run_type: dto.run_type,
     status: dto.run_status,
     run_started_at: dto.run_started_at,
@@ -201,17 +215,13 @@ function mapScannerCandidateSummary(data: unknown): ScannerRunSummary | null {
 }
 
 function mapScannerStatus(data: unknown): ScannerRuntimeStatus {
-  if (!isRecord(data)) {
-    throw new Error("Invalid scanner status response");
-  }
+  if (!isRecord(data)) throw new Error("Invalid scanner status response");
   const dto = data as unknown as ScannerStatusDto;
   if (
     (dto.state !== "OFF" && dto.state !== "ON") ||
     typeof dto.contract_version !== "string" ||
     typeof dto.scanner_runtime_implemented !== "boolean"
-  ) {
-    throw new Error("Invalid scanner status response");
-  }
+  ) throw new Error("Invalid scanner status response");
   return {
     state: dto.state,
     contractVersion: dto.contract_version,
@@ -244,114 +254,156 @@ function formatScannerSide(direction: ScannerCandidateDto["direction"]): Scanner
 
 function humanizeIdentifier(value: string | null | undefined): string {
   if (!value) return "Unavailable";
-  return value
-    .replace(/_/g, " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function mapCandidate(dto: ScannerCandidateDto): ScannerResult {
+  const entryPrice = parseFiniteNumber(dto.entry_trigger_price, "entry_trigger_price");
+  const currentPrice = readNumber(dto.evidence ?? {}, "current_price", "last_price", "close_price");
+  const setupReasons = dto.accepted_reasons && dto.accepted_reasons.length > 0
+    ? dto.accepted_reasons
+    : [`${dto.setup_name} candidate returned by the AstraForge scanner runtime.`];
+  const rejectionReasons = mapScannerLifecycleToStatus(dto.lifecycle) === "Rejected"
+    ? (dto.audit_codes ?? []).map((code) => humanizeIdentifier(code))
+    : undefined;
+  const riskWarnings = [
+    ...(dto.entry_ready ? [] : ["Entry trigger not ready yet"]),
+    ...(dto.stale ? ["Candidate is stale and should be reviewed carefully"] : []),
+  ];
+  return {
+    candidateId: dto.candidate_id,
+    universeRank: maybeParseFiniteNumber(dto.universe_rank) ?? undefined,
+    symbol: dto.symbol,
+    side: formatScannerSide(dto.direction),
+    currentPrice: currentPrice ?? Number.NaN,
+    volume24h: parseFiniteNumber(dto.quote_volume, "quote_volume"),
+    trend1h: dto.direction === "LONG" ? "Bullish Regime" : "Bearish Regime",
+    setup15m: dto.setup_name,
+    entry5m: dto.entry_ready ? "Entry Ready" : "Awaiting Trigger",
+    grade: mapScannerGrade(dto.grade),
+    score: dto.score === null || dto.score === undefined ? Number.NaN : parseFiniteNumber(dto.score, "score"),
+    riskReward: Number.NaN,
+    status: mapScannerLifecycleToStatus(dto.lifecycle),
+    entryZone: `${entryPrice.toFixed(entryPrice > 100 ? 2 : 4)}`,
+    stopLoss: Number.NaN,
+    tp1: Number.NaN,
+    tp2: Number.NaN,
+    tp3: Number.NaN,
+    confidence: dto.confidence === null || dto.confidence === undefined ? Number.NaN : parseFiniteNumber(dto.confidence, "confidence"),
+    setupReasons,
+    rejectionReasons,
+    riskWarnings: riskWarnings.length > 0 ? riskWarnings : undefined,
+  };
+}
+
+function auditTrend(audits: ScannerAuditRecord[]): string {
+  if (audits.some((audit) => audit.code === "TREND_SIDEWAYS")) return "Sideways";
+  if (audits.some((audit) => audit.code === "TREND_MIXED")) return "Mixed";
+  const direction = audits.find((audit) => audit.direction)?.direction;
+  if (direction === "LONG") return "Bullish Regime";
+  if (direction === "SHORT") return "Bearish Regime";
+  return "Unavailable";
+}
+
+function auditOnlyResult(symbol: string, audits: ScannerAuditRecord[]): ScannerResult {
+  const failed = audits.some((audit) => SYMBOL_DATA_FAILURE_CODES.has(audit.code));
+  const direction = audits.find((audit) => audit.direction)?.direction;
+  const universeRank = audits.map((audit) => audit.universeRank).find((rank) => rank !== null && rank !== undefined) ?? undefined;
+  return {
+    universeRank,
+    symbol,
+    side: direction === "LONG" ? "Long" : direction === "SHORT" ? "Short" : "N/A",
+    currentPrice: Number.NaN,
+    volume24h: Number.NaN,
+    trend1h: auditTrend(audits),
+    setup15m: "No qualified setup",
+    entry5m: "Unavailable",
+    grade: "Rejected",
+    score: Number.NaN,
+    riskReward: Number.NaN,
+    status: failed ? "Failed" : "Rejected",
+    entryZone: "Unavailable",
+    stopLoss: Number.NaN,
+    tp1: Number.NaN,
+    tp2: Number.NaN,
+    tp3: Number.NaN,
+    confidence: Number.NaN,
+    setupReasons: [],
+    rejectionReasons: audits.map((audit) => `${humanizeIdentifier(audit.code)} — ${audit.detail}`),
+  };
+}
+
+function buildLatestEvaluationRows(
+  candidates: ScannerResult[],
+  summary: ScannerRunSummary | null,
+): ScannerResult[] {
+  if (!summary || summary.runType !== "FULL_UNIVERSE_SCAN") return candidates;
+  const bySymbol = new Map<string, ScannerResult>();
+  for (const candidate of candidates) bySymbol.set(candidate.symbol, candidate);
+
+  const auditsBySymbol = new Map<string, ScannerAuditRecord[]>();
+  for (const audit of summary.audits ?? []) {
+    if (!audit.symbol) continue;
+    const list = auditsBySymbol.get(audit.symbol) ?? [];
+    list.push(audit);
+    auditsBySymbol.set(audit.symbol, list);
+  }
+  for (const [symbol, audits] of auditsBySymbol) {
+    if (!bySymbol.has(symbol)) bySymbol.set(symbol, auditOnlyResult(symbol, audits));
+  }
+
+  return [...bySymbol.values()].sort((left, right) => {
+    const leftRank = left.universeRank ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = right.universeRank ?? Number.MAX_SAFE_INTEGER;
+    return leftRank - rightRank || left.symbol.localeCompare(right.symbol);
+  });
 }
 
 export const scannerService = {
   async getStatus(signal?: AbortSignal): Promise<ScannerRuntimeStatus> {
-    const data = await apiClient.get<unknown>("/api/v1/scanner/status", { signal });
-    return mapScannerStatus(data);
+    return mapScannerStatus(await apiClient.get<unknown>("/api/v1/scanner/status", { signal }));
   },
 
   async start(): Promise<ScannerRuntimeStatus> {
-    const data = await apiClient.post<unknown>("/api/v1/scanner/start", {
-      idempotent: true,
-    });
-    return mapScannerStatus(data);
+    return mapScannerStatus(await apiClient.post<unknown>("/api/v1/scanner/start", { idempotent: true }));
   },
 
   async stop(): Promise<ScannerRuntimeStatus> {
-    const data = await apiClient.post<unknown>("/api/v1/scanner/stop", {
-      idempotent: true,
-    });
-    return mapScannerStatus(data);
+    return mapScannerStatus(await apiClient.post<unknown>("/api/v1/scanner/stop", { idempotent: true }));
   },
 
   async runNow(): Promise<ScannerRunSummary> {
-    const data = await apiClient.post<unknown>("/api/v1/scanner/run-now", {
-      idempotent: true,
-    });
-    return mapScannerRunSummary(data);
+    return mapScannerRunSummary(await apiClient.post<unknown>("/api/v1/scanner/run-now", { idempotent: true }));
   },
 
   async getCandidates(signal?: AbortSignal): Promise<ScannerCandidatesSnapshot> {
     const data = await apiClient.get<unknown>("/api/v1/scanner/candidates", { signal });
-    if (!isRecord(data) || !Array.isArray(data.candidates)) {
-      throw new Error("Invalid scanner candidates response");
-    }
+    if (!isRecord(data) || !Array.isArray(data.candidates)) throw new Error("Invalid scanner candidates response");
     const dto = data as unknown as ScannerCandidatesResponseDto;
+    const summary = mapScannerCandidateSummary(dto.summary);
+    const currentRunId = typeof dto.summary?.run_id === "string" ? dto.summary.run_id : null;
 
-    const candidates = dto.candidates.map((item, index) => {
-      if (!isRecord(item)) {
-        throw new Error(`Invalid scanner candidate at index ${index}`);
-      }
-      const dto = item as unknown as ScannerCandidateDto;
+    const mappedCandidates = dto.candidates.map((item, index) => {
+      if (!isRecord(item)) throw new Error(`Invalid scanner candidate at index ${index}`);
+      const candidate = item as unknown as ScannerCandidateDto;
       if (
-        typeof dto.symbol !== "string" ||
-        (dto.direction !== "LONG" && dto.direction !== "SHORT") ||
-        typeof dto.setup_name !== "string" ||
-        typeof dto.lifecycle !== "string"
-      ) {
-        throw new Error(`Invalid scanner candidate at index ${index}`);
-      }
-
-      const entryPrice = parseFiniteNumber(dto.entry_trigger_price, "entry_trigger_price");
-      const currentPrice = readNumber(dto.evidence ?? {}, "current_price", "last_price", "close_price");
-      // The Scanner contract does not currently expose stop-loss, take-profit,
-      // or risk/reward values. Keep these unavailable rather than duplicating
-      // trading-rule calculations in the frontend.
-      const stopLoss = Number.NaN;
-      const tp1 = Number.NaN;
-      const tp2 = Number.NaN;
-      const tp3 = Number.NaN;
-      const riskReward = Number.NaN;
-      const setupReasons = dto.accepted_reasons && dto.accepted_reasons.length > 0
-        ? dto.accepted_reasons
-        : [`${dto.setup_name} candidate returned by the AstraForge scanner runtime.`];
-      const rejectionReasons =
-        mapScannerLifecycleToStatus(dto.lifecycle) === "Rejected"
-          ? (dto.audit_codes ?? []).map((code) => humanizeIdentifier(code))
-          : undefined;
-      const riskWarnings = [
-        ...(dto.entry_ready ? [] : ["Entry trigger not ready yet"]),
-        ...(dto.stale ? ["Candidate is stale and should be reviewed carefully"] : []),
-      ];
-
-      return {
-        candidateId: dto.candidate_id,
-        symbol: dto.symbol,
-        side: formatScannerSide(dto.direction),
-        currentPrice: currentPrice ?? Number.NaN,
-        volume24h: parseFiniteNumber(dto.quote_volume, "quote_volume"),
-        trend1h: dto.direction === "LONG" ? "Bullish Regime" : "Bearish Regime",
-        setup15m: dto.setup_name,
-        entry5m: dto.entry_ready ? "Entry Ready" : "Awaiting Trigger",
-        grade: mapScannerGrade(dto.grade),
-        score: dto.score === null || dto.score === undefined ? Number.NaN : parseFiniteNumber(dto.score, "score"),
-        riskReward,
-        status: mapScannerLifecycleToStatus(dto.lifecycle),
-        entryZone: `${entryPrice.toFixed(entryPrice > 100 ? 2 : 4)}`,
-        stopLoss: Number.isFinite(stopLoss) ? Number(stopLoss.toFixed(entryPrice > 100 ? 2 : 4)) : Number.NaN,
-        tp1: Number.isFinite(tp1) ? Number(tp1.toFixed(entryPrice > 100 ? 2 : 4)) : Number.NaN,
-        tp2: Number.isFinite(tp2) ? Number(tp2.toFixed(entryPrice > 100 ? 2 : 4)) : Number.NaN,
-        tp3: Number.isFinite(tp3) ? Number(tp3.toFixed(entryPrice > 100 ? 2 : 4)) : Number.NaN,
-        confidence: dto.confidence === null || dto.confidence === undefined
-          ? Number.NaN
-          : parseFiniteNumber(dto.confidence, "confidence"),
-        setupReasons,
-        rejectionReasons,
-        riskWarnings: riskWarnings.length > 0 ? riskWarnings : undefined,
-      };
+        typeof candidate.symbol !== "string" ||
+        (candidate.direction !== "LONG" && candidate.direction !== "SHORT") ||
+        typeof candidate.setup_name !== "string" ||
+        typeof candidate.lifecycle !== "string"
+      ) throw new Error(`Invalid scanner candidate at index ${index}`);
+      return { dto: candidate, result: mapCandidate(candidate) };
     });
 
+    const currentCandidates = currentRunId
+      ? mappedCandidates.filter(({ dto: candidate }) => candidate.evidence?.source_run_id === currentRunId)
+      : mappedCandidates;
+    const rows = buildLatestEvaluationRows(currentCandidates.map(({ result }) => result), summary);
+
     return {
-      candidates,
-      summary: mapScannerCandidateSummary(dto.summary),
-      summaryState:
-        dto.summary?.state === "ON" || dto.summary?.state === "OFF" ? dto.summary.state : null,
+      candidates: rows,
+      summary,
+      summaryState: dto.summary?.state === "ON" || dto.summary?.state === "OFF" ? dto.summary.state : null,
     };
   },
 };

@@ -134,6 +134,7 @@ class ScannerAuditRecord(BaseModel):
     code: str
     detail: str
     symbol: str | None = None
+    universe_rank: int | None = Field(default=None, ge=1)
     direction: ScannerDirection | None = None
     setup: ScannerSetup | None = None
     timeframe: str | None = None
@@ -213,6 +214,7 @@ class ScannerCandidateSummary(BaseModel):
     """Frontend-friendly latest scanner run summary for empty-state visibility."""
 
     state: ScannerState
+    run_id: str | None = None
     run_status: ScannerRunStatus | None = None
     run_type: ScannerRunType | None = None
     run_started_at: datetime | None = None
