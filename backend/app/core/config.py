@@ -29,7 +29,8 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
     cors_allow_credentials: bool = True
     database_migrate_on_startup: bool = True
-    mutation_auth_required: bool = False
+    mutation_auth_required: bool = True
+    operator_auth_removed: bool = False
     mutation_api_token: SecretStr | None = None
     operator_session_ttl_seconds: int = Field(default=43_200, ge=300, le=604_800)
     operator_login_max_attempts: int = Field(default=5, ge=3, le=20)
@@ -126,6 +127,18 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def validate_mutation_security_mode(self) -> Settings:
+        """Require an explicit owner-approved switch before production auth removal."""
+
+        if (
+            self.environment in {"staging", "production"}
+            and not self.mutation_auth_required
+            and not self.operator_auth_removed
+        ):
+            raise ValueError("Mutation authentication cannot be disabled outside development/test")
+        return self
+
+    @model_validator(mode="after")
     def default_scanner_auto_start_for_tests(self) -> Settings:
         """Keep scanner auto-start off in tests unless it is explicitly enabled."""
 
@@ -188,7 +201,7 @@ class Settings(BaseSettings):
 
     @property
     def mutation_token_configured(self) -> bool:
-        """Return whether a legacy mutation API token is configured."""
+        """Return whether a non-empty legacy mutation API token is configured."""
 
         return bool(self.mutation_api_token and self.mutation_api_token.get_secret_value())
 
