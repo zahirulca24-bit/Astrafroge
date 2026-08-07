@@ -134,6 +134,7 @@ class ScannerAuditRecord(BaseModel):
     code: str
     detail: str
     symbol: str | None = None
+    universe_rank: int | None = Field(default=None, ge=1)
     direction: ScannerDirection | None = None
     setup: ScannerSetup | None = None
     timeframe: str | None = None
