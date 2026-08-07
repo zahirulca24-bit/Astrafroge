@@ -24,10 +24,11 @@ AstraForge is packaged as one repository with two deployable services:
 - Operator-token authentication has been removed by explicit owner-approved configuration.
 - Scanner & Signals **Phase 1 — Data Contract Alignment** merged in PR #21; CI Run #66 passed.
 - Scanner & Signals **Phase 2 — Scanner Table Rebuild** merged in PR #22; final CI Run #71 passed.
+- Scanner & Signals **Phase 3 — Signal Card Integration** merged in PR #23; CI Run #73 passed.
 
 ### Current validation focus
 
-**Phase 3 — Signal Card Integration is active.** Scanner and Signal work must be completed backend + frontend together in every phase. No phase is considered complete with only one side implemented.
+**Phase 4 — Cross-Link Scanner ↔ Signal is active.** Scanner and Signal work must be completed backend + frontend together in every phase. No phase is considered complete with only one side implemented.
 
 ## Locked Scanner & Signals layout
 
@@ -70,20 +71,21 @@ Mobile/tablet may stack responsively, but desktop remains 50/50.
 - Rejection/failure reason and chart action are exposed.
 - Scanner formulas, strategy thresholds, risk rules and execution rules were not changed.
 
-### 🚧 Phase 3 — Signal Card Integration — IN PROGRESS
+### ✅ Phase 3 — Signal Card Integration — COMPLETE
 
-- Backend provides card-eligible Signal Engine records only: A+/A ACTIVE and B+ WATCH.
-- Build the reusable right 50% Signal card panel.
-- Source cards only from backend Signal Engine endpoints.
-- Render grade, lifecycle, strategy, entry, backend stop when available, score, confidence, rationale, candidate ID and signal ID.
-- TP/R:R must remain unavailable until an authoritative backend value exists; frontend must not invent them.
+- Backend provides card-eligible Signal Engine records only through `/api/v1/signals/cards`: A+/A ACTIVE and B+ WATCH.
+- Reusable right-side Signal card panel consumes backend Signal Engine status and cards.
+- Grade, lifecycle, strategy, entry, backend stop when available, score, confidence, rationale, candidate ID and signal ID are rendered.
+- TP/R:R remain unavailable until authoritative backend values exist; frontend does not invent them.
 - Rejected/invalidated/expired/risk-blocked records do not become normal signal cards.
 
-### Phase 4 — Cross-Link Scanner ↔ Signal
+### 🚧 Phase 4 — Cross-Link Scanner ↔ Signal — IN PROGRESS
 
-- Scanner row click highlights its related Signal card when one exists.
-- Signal card click highlights its scanner row.
-- Candidate ID ↔ Signal ID linkage remains deterministic.
+- Backend exposes deterministic card linkage by candidate ID and signal ID.
+- Scanner row selection must target only a real linked Signal record when one exists.
+- Signal card selection must target the exact scanner candidate by candidate ID.
+- Shared selection state persists across the current standalone pages and will work directly when Phase 5 places both panels side by side.
+- No fake candidate/signal relation may be created.
 
 ### Phase 5 — UI Consolidation
 

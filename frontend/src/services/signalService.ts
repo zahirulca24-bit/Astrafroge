@@ -56,6 +56,13 @@ interface SignalListDto {
   signals: SignalRecordDto[];
 }
 
+interface SignalLinkDto {
+  candidate_id: string;
+  signal_id: string;
+  symbol: string;
+  lifecycle: "ACTIVE" | "WATCH" | "EXPIRED" | "INVALIDATED" | "REJECTED" | "RISK_BLOCKED";
+}
+
 function finite(value: unknown, field: string): number {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) throw new Error(`Invalid signal numeric field: ${field}`);
@@ -161,5 +168,20 @@ export const signalService = {
 
   async getCards(signal?: AbortSignal): Promise<SignalRecordView[]> {
     return mapSignalList(await apiClient.get<unknown>("/api/v1/signals/cards", { signal }));
+  },
+
+  async getLinks(signal?: AbortSignal): Promise<Map<string, string>> {
+    const data = await apiClient.get<unknown>("/api/v1/signals/links", { signal });
+    if (!isRecord(data) || !Array.isArray(data.links)) throw new Error("Invalid signal links response");
+    const links = new Map<string, string>();
+    for (const item of data.links) {
+      if (!isRecord(item)) throw new Error("Invalid signal link record");
+      const dto = item as unknown as SignalLinkDto;
+      if (typeof dto.candidate_id !== "string" || typeof dto.signal_id !== "string") {
+        throw new Error("Invalid signal link record");
+      }
+      links.set(dto.candidate_id, dto.signal_id);
+    }
+    return links;
   },
 };

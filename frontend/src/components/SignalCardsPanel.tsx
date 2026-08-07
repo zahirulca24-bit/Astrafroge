@@ -3,6 +3,11 @@ import { ChartLine, RefreshCw, SlidersHorizontal } from "lucide-react";
 
 import { useTrading } from "../store/TradingStore";
 import { signalService } from "../services/signalService";
+import {
+  getSelectedCandidateId,
+  selectCandidateId,
+  subscribeCandidateSelection,
+} from "../services/scannerSignalSelection";
 import { SignalRecordView, SignalStatusView } from "../types";
 import { GradeBadge, SymbolAvatar } from "./SharedComponents";
 
@@ -27,11 +32,14 @@ export const SignalCardsPanel: React.FC = () => {
   const { setCurrentPage, setSelectedSymbol } = useTrading();
   const [status, setStatus] = useState<SignalStatusView | null>(null);
   const [signals, setSignals] = useState<SignalRecordView[]>([]);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(() => getSelectedCandidateId());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<SignalFilter>("All");
   const [sortBy, setSortBy] = useState<SortKey>("score");
   const [refreshNonce, setRefreshNonce] = useState(0);
+
+  useEffect(() => subscribeCandidateSelection(setSelectedCandidateId), []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -152,8 +160,14 @@ export const SignalCardsPanel: React.FC = () => {
             {visibleSignals.map((signal) => {
               const isLong = signal.side === "Long";
               const isWatch = signal.lifecycle === "WATCH";
+              const selected = selectedCandidateId === signal.candidateId;
               return (
-                <article key={signal.signalId} className={`rounded-lg border p-3 font-mono text-xs ${isWatch ? "border-amber-900/60 bg-amber-950/10" : isLong ? "border-emerald-900/50 bg-zinc-950" : "border-rose-900/50 bg-zinc-950"}`}>
+                <article
+                  key={signal.signalId}
+                  onClick={() => selectCandidateId(signal.candidateId)}
+                  className={`cursor-pointer rounded-lg border p-3 font-mono text-xs ${selected ? "border-orange-500 bg-orange-950/20 ring-1 ring-orange-600" : isWatch ? "border-amber-900/60 bg-amber-950/10" : isLong ? "border-emerald-900/50 bg-zinc-950" : "border-rose-900/50 bg-zinc-950"}`}
+                  title="Select linked Scanner row"
+                >
                   <div className="flex items-start justify-between gap-2 border-b border-zinc-850 pb-2">
                     <div className="flex items-center gap-2">
                       <SymbolAvatar symbol={signal.symbol} className="w-7 h-7 text-[9px]" />
@@ -185,7 +199,7 @@ export const SignalCardsPanel: React.FC = () => {
                   </div>
 
                   <div className="mt-2 pt-2 border-t border-zinc-850 flex flex-col gap-1">
-                    <button type="button" onClick={() => openChart(signal.symbol)} className="w-full py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold flex items-center justify-center gap-1 text-[10px]"><ChartLine size={11} /> Open Chart</button>
+                    <button type="button" onClick={(event) => { event.stopPropagation(); openChart(signal.symbol); }} className="w-full py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold flex items-center justify-center gap-1 text-[10px]"><ChartLine size={11} /> Open Chart</button>
                     <div className="text-[8px] text-zinc-600 break-all">signal_id: {signal.signalId}</div>
                     <div className="text-[8px] text-zinc-600 break-all">candidate_id: {signal.candidateId}</div>
                   </div>

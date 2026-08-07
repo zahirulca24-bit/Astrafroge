@@ -8,6 +8,12 @@ import {
   ScannerTableStatus,
   scannerTableService,
 } from "../services/scannerTableService";
+import { signalService } from "../services/signalService";
+import {
+  getSelectedCandidateId,
+  selectCandidateId,
+  subscribeCandidateSelection,
+} from "../services/scannerSignalSelection";
 
 const STATUS_LABEL: Record<ScannerTableStatus, string> = {
   READY: "Ready",
@@ -41,6 +47,8 @@ export const ScannerTablePanel: React.FC = () => {
   } = useTrading();
 
   const [snapshot, setSnapshot] = useState<ScannerTableSnapshot | null>(null);
+  const [signalLinks, setSignalLinks] = useState<Map<string, string>>(new Map());
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(() => getSelectedCandidateId());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -48,6 +56,8 @@ export const ScannerTablePanel: React.FC = () => {
   const [status, setStatus] = useState("ALL");
   const [strategy, setStrategy] = useState("ALL");
   const [sort, setSort] = useState("RANK");
+
+  useEffect(() => subscribeCandidateSelection(setSelectedCandidateId), []);
 
   useEffect(() => {
     let active = true;
@@ -63,6 +73,12 @@ export const ScannerTablePanel: React.FC = () => {
         setError(cause instanceof Error ? cause.message : "Scanner table unavailable");
       } finally {
         if (active) setLoading(false);
+      }
+      try {
+        const links = await signalService.getLinks();
+        if (active) setSignalLinks(links);
+      } catch {
+        if (active) setSignalLinks(new Map());
       }
     };
     void refresh();
@@ -162,13 +178,20 @@ export const ScannerTablePanel: React.FC = () => {
         <table className="w-full min-w-[1050px] border-collapse text-[10px]">
           <thead className="sticky top-0 z-10 bg-zinc-950 text-left uppercase tracking-wide text-zinc-500">
             <tr>
-              {[
-                "#", "Symbol", "Side", "1H Trend", "15M Setup", "5M Entry", "Strategy", "Score", "Confidence", "R:R", "Status", "Reason", "Chart",
-              ].map((label) => <th key={label} className="border-b border-zinc-800 px-2 py-2">{label}</th>)}
+              {["#", "Symbol", "Side", "1H Trend", "15M Setup", "5M Entry", "Strategy", "Score", "Confidence", "R:R", "Status", "Reason", "Chart"].map((label) => <th key={label} className="border-b border-zinc-800 px-2 py-2">{label}</th>)}
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => <ScannerRow key={`${snapshot?.summary.runId}-${row.universeRank}-${row.symbol}`} row={row} openChart={openChart} />)}
+            {rows.map((row) => (
+              <ScannerRow
+                key={`${snapshot?.summary.runId}-${row.universeRank}-${row.symbol}`}
+                row={row}
+                openChart={openChart}
+                linked={Boolean(row.candidateId && signalLinks.has(row.candidateId))}
+                selected={Boolean(row.candidateId && row.candidateId === selectedCandidateId)}
+                onSelect={() => row.candidateId && signalLinks.has(row.candidateId) && selectCandidateId(row.candidateId)}
+              />
+            ))}
           </tbody>
         </table>
         {!loading && rows.length === 0 && (
@@ -198,8 +221,18 @@ const Select: React.FC<{ value: string; onChange: (value: string) => void; optio
   </select>
 );
 
-const ScannerRow: React.FC<{ row: ScannerTableRow; openChart: (symbol: string) => void }> = ({ row, openChart }) => (
-  <tr className="border-b border-zinc-850 bg-zinc-900/60 hover:bg-zinc-800/60">
+const ScannerRow: React.FC<{
+  row: ScannerTableRow;
+  openChart: (symbol: string) => void;
+  linked: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}> = ({ row, openChart, linked, selected, onSelect }) => (
+  <tr
+    onClick={linked ? onSelect : undefined}
+    className={`border-b border-zinc-850 ${selected ? "bg-orange-950/35 outline outline-1 outline-orange-700" : "bg-zinc-900/60 hover:bg-zinc-800/60"} ${linked ? "cursor-pointer" : ""}`}
+    title={linked ? "Select linked Signal card" : undefined}
+  >
     <td className="px-2 py-2 text-zinc-500">{row.universeRank}</td>
     <td className="px-2 py-2 font-bold text-white">{row.symbol}</td>
     <td className={row.direction === "LONG" ? "px-2 py-2 text-emerald-400" : row.direction === "SHORT" ? "px-2 py-2 text-rose-400" : "px-2 py-2 text-zinc-500"}>{row.direction ?? "—"}</td>
@@ -212,6 +245,6 @@ const ScannerRow: React.FC<{ row: ScannerTableRow; openChart: (symbol: string) =
     <td className="px-2 py-2 text-zinc-500">—</td>
     <td className="px-2 py-2"><span className={`rounded border px-1.5 py-0.5 font-bold ${STATUS_CLASS[row.status]}`}>{STATUS_LABEL[row.status]}</span></td>
     <td className="max-w-64 px-2 py-2 text-zinc-400" title={row.primaryReason ?? row.primaryReasonCode ?? ""}>{row.primaryReason ?? row.primaryReasonCode ?? "—"}</td>
-    <td className="px-2 py-2"><button onClick={() => openChart(row.symbol)} className="rounded bg-zinc-800 p-1.5 text-zinc-300 hover:text-white" title={`Open ${row.symbol} chart`}><LineChart size={12} /></button></td>
+    <td className="px-2 py-2"><button onClick={(event) => { event.stopPropagation(); openChart(row.symbol); }} className="rounded bg-zinc-800 p-1.5 text-zinc-300 hover:text-white" title={`Open ${row.symbol} chart`}><LineChart size={12} /></button></td>
   </tr>
 );
