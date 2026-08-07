@@ -109,3 +109,19 @@ class SignalRecordList(BaseModel):
 
     count: int = Field(ge=0)
     signals: list[SignalRecord]
+
+
+class SignalLink(BaseModel):
+    """Deterministic Scanner candidate to Signal identity link."""
+
+    candidate_id: str
+    signal_id: str
+    symbol: str
+    lifecycle: SignalLifecycle
+
+
+class SignalLinkList(BaseModel):
+    """Candidate-to-signal links used by the merged Scanner & Signals UI."""
+
+    count: int = Field(ge=0)
+    links: list[SignalLink]
