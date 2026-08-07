@@ -69,8 +69,8 @@ describe("scannerTableService", () => {
 
     expect(snapshot.summary.total).toBe(50);
     expect(snapshot.rows).toHaveLength(50);
-    expect(snapshot.rows[0].universeRank).toBe(1);
-    expect(snapshot.rows[49].universeRank).toBe(50);
+    expect(snapshot.rows.at(0)?.universeRank).toBe(1);
+    expect(snapshot.rows.at(-1)?.universeRank).toBe(50);
     expect(snapshot.rows.filter((row) => row.status === "REJECTED")).toHaveLength(48);
   });
 
