@@ -41,7 +41,74 @@ async def test_honors_retry_after_then_succeeds() -> None:
 
 
 @pytest.mark.anyio
-async def test_rate_limit_without_retry_after_fails_closed() -> None:
+async def test_rate_limit_without_retry_after_uses_bounded_backoff() -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    async def sleep(delay: float) -> None:
+        delays.append(delay)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            return httpx.Response(429, request=request)
+        return httpx.Response(200, json={"serverTime": 1_700_000_000_000}, request=request)
+
+    client = BinancePublicClient(
+        base_url="https://fapi.binance.com",
+        timeout_seconds=1,
+        retry_attempts=3,
+        retry_base_delay_seconds=0.25,
+        rate_limit_max_delay_seconds=1,
+        transport=httpx.MockTransport(handler),
+        sleep=sleep,
+    )
+
+    payload, _ = await client.exchange_time()
+
+    assert payload["serverTime"] == 1_700_000_000_000
+    assert attempts == 3
+    assert delays == [0.25, 0.5]
+
+
+@pytest.mark.anyio
+async def test_invalid_retry_after_falls_back_to_bounded_backoff() -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    async def sleep(delay: float) -> None:
+        delays.append(delay)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(
+                429,
+                headers={"Retry-After": "invalid"},
+                request=request,
+            )
+        return httpx.Response(200, json={"serverTime": 1_700_000_000_000}, request=request)
+
+    client = BinancePublicClient(
+        base_url="https://fapi.binance.com",
+        timeout_seconds=1,
+        retry_attempts=2,
+        retry_base_delay_seconds=0.2,
+        transport=httpx.MockTransport(handler),
+        sleep=sleep,
+    )
+
+    payload, _ = await client.exchange_time()
+
+    assert payload["serverTime"] == 1_700_000_000_000
+    assert attempts == 2
+    assert delays == [0.2]
+
+
+@pytest.mark.anyio
+async def test_rate_limit_exhaustion_returns_stable_error() -> None:
     attempts = 0
     delays: list[float] = []
 
@@ -57,6 +124,7 @@ async def test_rate_limit_without_retry_after_fails_closed() -> None:
         base_url="https://fapi.binance.com",
         timeout_seconds=1,
         retry_attempts=3,
+        retry_base_delay_seconds=0.1,
         transport=httpx.MockTransport(handler),
         sleep=sleep,
     )
@@ -64,36 +132,8 @@ async def test_rate_limit_without_retry_after_fails_closed() -> None:
     with pytest.raises(BinancePublicClientError, match="rate limited"):
         await client.exchange_time()
 
-    assert attempts == 1
-    assert delays == []
-
-
-@pytest.mark.anyio
-async def test_invalid_retry_after_fails_closed() -> None:
-    delays: list[float] = []
-
-    async def sleep(delay: float) -> None:
-        delays.append(delay)
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            429,
-            headers={"Retry-After": "invalid"},
-            request=request,
-        )
-
-    client = BinancePublicClient(
-        base_url="https://fapi.binance.com",
-        timeout_seconds=1,
-        retry_attempts=3,
-        transport=httpx.MockTransport(handler),
-        sleep=sleep,
-    )
-
-    with pytest.raises(BinancePublicClientError, match="rate limited"):
-        await client.exchange_time()
-
-    assert delays == []
+    assert attempts == 3
+    assert delays == [0.1, 0.2]
 
 
 @pytest.mark.anyio
