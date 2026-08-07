@@ -9,7 +9,7 @@ vi.mock("./apiClient", () => ({
 
 import { signalService } from "./signalService";
 
-describe("signalService.getCards", () => {
+describe("signalService card and link contracts", () => {
   beforeEach(() => get.mockReset());
 
   it("maps backend card identities and lifecycle without deriving scanner-local cards", async () => {
@@ -56,5 +56,25 @@ describe("signalService.getCards", () => {
       stopLossPrice: 64200,
     });
     expect(get).toHaveBeenCalledWith("/api/v1/signals/cards", { signal: undefined });
+  });
+
+  it("maps candidate id to the exact backend signal id", async () => {
+    get.mockResolvedValue({
+      count: 1,
+      links: [
+        {
+          candidate_id: "candidate-1",
+          signal_id: "a".repeat(64),
+          symbol: "BTCUSDT",
+          lifecycle: "ACTIVE",
+        },
+      ],
+    });
+
+    const links = await signalService.getLinks();
+
+    expect(links.get("candidate-1")).toBe("a".repeat(64));
+    expect(links.size).toBe(1);
+    expect(get).toHaveBeenCalledWith("/api/v1/signals/links", { signal: undefined });
   });
 });
