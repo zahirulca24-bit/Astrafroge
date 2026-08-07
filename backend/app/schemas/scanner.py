@@ -214,6 +214,7 @@ class ScannerCandidateSummary(BaseModel):
     """Frontend-friendly latest scanner run summary for empty-state visibility."""
 
     state: ScannerState
+    run_id: str | None = None
     run_status: ScannerRunStatus | None = None
     run_type: ScannerRunType | None = None
     run_started_at: datetime | None = None
