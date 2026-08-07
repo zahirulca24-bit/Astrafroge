@@ -22,10 +22,11 @@ AstraForge is packaged as one repository with two deployable services:
 - Scanner runtime is running and returning deterministic audit/rejection reasons.
 - Signal Engine backend exists and is sourced from Scanner candidates.
 - Operator-token authentication has been removed by explicit owner-approved configuration.
+- Scanner & Signals **Phase 1 — Data Contract Alignment** merged in PR #21; CI Run #66 passed.
 
 ### Current validation focus
 
-The next locked UI/data milestone is the merged **Scanner & Signals** page. Scanner and Signal must be completed backend + frontend together in every phase. No phase is considered complete with only one side implemented.
+**Phase 2 — Scanner Table Rebuild is active.** Scanner and Signal work must be completed backend + frontend together in every phase. No phase is considered complete with only one side implemented.
 
 ## Locked Scanner & Signals layout
 
@@ -50,21 +51,24 @@ Mobile/tablet may stack responsively, but desktop remains 50/50.
 
 ## Locked implementation roadmap
 
-### Phase 1 — Data Contract Alignment
+### ✅ Phase 1 — Data Contract Alignment — COMPLETE
 
-- Make the latest scanner run expose one authoritative per-symbol evaluation truth, including rejected/failed symbols.
-- Preserve universe rank so the frontend can render the selected 50 in scanner order.
-- Keep candidate identity and signal identity separate but linked.
-- Frontend consumes the backend scanner contract instead of calculating rejected totals locally.
-- Frontend connects to the real backend Signal Engine contract.
-- Add regression tests for scanner-row and signal-contract mapping.
+- Latest full scan exposes authoritative run identity and per-symbol audit truth.
+- Universe rank is preserved for rejected/failed rows.
+- Candidate identity and signal identity remain separate but linked.
+- Frontend scanner mapping is tied to the latest full-run contract.
+- Real backend Signal Engine client exists for the next signal-card phase.
+- Backend + frontend regression coverage added.
 
-### Phase 2 — Scanner Table Rebuild
+### 🚧 Phase 2 — Scanner Table Rebuild — IN PROGRESS
 
-- Build the left 50% Scanner table.
-- Render all selected/evaluated rows, including rejected and failed rows.
-- Add filters, sort, rejection/audit reason, chart action, and independent scrolling.
-- Rejected and failed totals must come from the authoritative latest-run contract.
+- Backend exposes authoritative latest full-scan table rows.
+- Build the reusable left 50% Scanner table panel.
+- Render all evaluated rows, including Ready, Near Setup, Rejected and Failed.
+- Add symbol/side/status/strategy filters and rank/score/confidence/status sorting.
+- Show rejection/failure reason and chart action.
+- Counts come directly from the backend table contract; frontend must not invent rejected totals.
+- Keep scanner formulas, strategy thresholds, risk rules and execution rules unchanged.
 
 ### Phase 3 — Signal Card Integration
 
