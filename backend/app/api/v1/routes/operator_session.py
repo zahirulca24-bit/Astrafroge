@@ -14,9 +14,29 @@ from app.core.security import (
     revoke_operator_session,
     validate_operator_session,
 )
+from app.persistence import Persistence, TradingStateRepositories
 from app.schemas.operator_session import OperatorLoginRequest, OperatorSessionStatusResponse
 
 router = APIRouter(prefix="/operator-session", tags=["operator-session"])
+
+
+def _ensure_operator_session_repository(request: Request) -> None:
+    """Restore the repository facade when durable persistence is already active."""
+
+    repositories = getattr(request.app.state, "trading_state_repositories", None)
+    if isinstance(repositories, TradingStateRepositories):
+        return
+
+    persistence = getattr(request.app.state, "persistence", None)
+    if isinstance(persistence, Persistence):
+        request.app.state.trading_state_repositories = TradingStateRepositories(persistence)
+        return
+
+    raise AppError(
+        status_code=503,
+        code="OPERATOR_SESSION_UNAVAILABLE",
+        message="Operator session storage is unavailable",
+    )
 
 
 def _set_session_cookie(response: Response, *, session_token: str, settings: Settings) -> None:
@@ -54,6 +74,7 @@ async def operator_login(
     payload: OperatorLoginRequest,
     settings: Settings = Depends(get_settings),  # noqa: B008
 ) -> JSONResponse:
+    _ensure_operator_session_repository(request)
     session = await login_operator_session(
         request,
         operator_token=payload.operator_token.get_secret_value(),
