@@ -171,6 +171,7 @@ class ScannerFullService(ScannerRuntimeBase):
                                 code=exc.code,
                                 detail=exc.detail,
                                 symbol=universe_candidate.symbol,
+                                universe_rank=universe_candidate.rank,
                                 timeframe=exc.timeframe,
                             )
                         )
@@ -181,6 +182,7 @@ class ScannerFullService(ScannerRuntimeBase):
                                 code="INDICATOR_CALCULATION_FAILED",
                                 detail="Symbol evaluation failed closed",
                                 symbol=universe_candidate.symbol,
+                                universe_rank=universe_candidate.rank,
                             )
                         )
 
@@ -192,6 +194,7 @@ class ScannerFullService(ScannerRuntimeBase):
                                 code="REENTRY_COOLDOWN_ACTIVE",
                                 detail="Terminal candidate key cannot reactivate",
                                 symbol=candidate.symbol,
+                                universe_rank=candidate.universe_rank,
                                 direction=candidate.direction,
                                 setup=candidate.setup,
                                 reference_time=candidate.reference_close_time,
@@ -207,6 +210,7 @@ class ScannerFullService(ScannerRuntimeBase):
                                 code="REENTRY_COOLDOWN_ACTIVE",
                                 detail="Three-candle / 45-minute re-entry cooldown is active",
                                 symbol=candidate.symbol,
+                                universe_rank=candidate.universe_rank,
                                 direction=candidate.direction,
                                 setup=candidate.setup,
                                 reference_time=candidate.reference_close_time,
@@ -222,6 +226,7 @@ class ScannerFullService(ScannerRuntimeBase):
                                 code="DUPLICATE_CANDIDATE_UPDATED",
                                 detail="Existing active candidate evaluation was updated",
                                 symbol=candidate.symbol,
+                                universe_rank=candidate.universe_rank,
                                 direction=candidate.direction,
                                 setup=candidate.setup,
                                 reference_time=candidate.reference_close_time,
@@ -336,6 +341,7 @@ class ScannerFullService(ScannerRuntimeBase):
                 code=failure.code,
                 detail=failure.detail,
                 symbol=universe.symbol,
+                universe_rank=universe.rank,
                 direction=context.direction,
                 timeframe=failure.timeframe or "15m",
             )
@@ -347,6 +353,7 @@ class ScannerFullService(ScannerRuntimeBase):
                     code="SETUP_NOT_DETECTED",
                     detail="No approved deterministic setup matched",
                     symbol=universe.symbol,
+                    universe_rank=universe.rank,
                     direction=context.direction,
                     timeframe="15m",
                 )
@@ -364,6 +371,7 @@ class ScannerFullService(ScannerRuntimeBase):
                     code="SUPERSEDED_BY_HIGHER_RANKED_SETUP",
                     detail="Valid setup retained as audit evidence but not selected",
                     symbol=item.symbol,
+                    universe_rank=item.universe_rank,
                     direction=item.direction,
                     setup=item.setup,
                     reference_time=item.reference_close_time,
