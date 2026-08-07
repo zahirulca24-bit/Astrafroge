@@ -114,6 +114,12 @@ function mapSignal(data: unknown, index: number): SignalRecordView {
   };
 }
 
+function mapSignalList(data: unknown): SignalRecordView[] {
+  if (!isRecord(data) || !Array.isArray(data.signals)) throw new Error("Invalid signal list response");
+  const dto = data as unknown as SignalListDto;
+  return dto.signals.map((item, index) => mapSignal(item, index));
+}
+
 function mapStatus(data: unknown): SignalStatusView {
   if (!isRecord(data)) throw new Error("Invalid signal status response");
   const dto = data as unknown as SignalStatusDto;
@@ -150,9 +156,10 @@ export const signalService = {
   },
 
   async getSignals(signal?: AbortSignal): Promise<SignalRecordView[]> {
-    const data = await apiClient.get<unknown>("/api/v1/signals", { signal });
-    if (!isRecord(data) || !Array.isArray(data.signals)) throw new Error("Invalid signal list response");
-    const dto = data as unknown as SignalListDto;
-    return dto.signals.map((item, index) => mapSignal(item, index));
+    return mapSignalList(await apiClient.get<unknown>("/api/v1/signals", { signal }));
+  },
+
+  async getCards(signal?: AbortSignal): Promise<SignalRecordView[]> {
+    return mapSignalList(await apiClient.get<unknown>("/api/v1/signals/cards", { signal }));
   },
 };
