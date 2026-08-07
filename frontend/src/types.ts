@@ -22,8 +22,9 @@ export interface ScannerResult {
   signalId?: string;
   riskAssessmentId?: string;
   executionPlanId?: string;
+  universeRank?: number;
   symbol: string;
-  side: "Long" | "Short";
+  side: "Long" | "Short" | "N/A";
   currentPrice: number;
   volume24h: number;
   trend1h: string;
@@ -32,7 +33,7 @@ export interface ScannerResult {
   grade: TradingGrade;
   score: number;
   riskReward: number;
-  status: "Ready Now" | "Near Setup" | "Rejected";
+  status: "Ready Now" | "Near Setup" | "Rejected" | "Failed";
   entryZone: string;
   stopLoss: number;
   tp1: number;
@@ -68,6 +69,9 @@ export interface ScannerAuditRecord {
   code: string;
   detail: string;
   symbol?: string | null;
+  universeRank?: number | null;
+  direction?: "LONG" | "SHORT" | null;
+  setup?: string | null;
   timeframe?: string | null;
 }
 
@@ -89,6 +93,55 @@ export interface ScannerCandidatesSnapshot {
   candidates: ScannerResult[];
   summary: ScannerRunSummary | null;
   summaryState: ScannerEngineState | null;
+}
+
+export type SignalLifecycle = "ACTIVE" | "WATCH" | "EXPIRED" | "INVALIDATED" | "REJECTED" | "RISK_BLOCKED";
+export type SignalEngineState = "READY" | "WAITING_FOR_SCANNER";
+
+export interface SignalRecordView {
+  signalId: string;
+  candidateId: string;
+  version: number;
+  symbol: string;
+  side: "Long" | "Short";
+  setup: string;
+  setupName: string;
+  lifecycle: SignalLifecycle;
+  scannerLifecycle: string;
+  grade: TradingGrade;
+  score: number;
+  confidence: number;
+  entryReady: boolean;
+  entryTriggerPrice: number;
+  stopLossPrice: number;
+  evaluatedAt: string;
+  updatedAt?: string | null;
+  sourceRunId?: string | null;
+  universeRank: number;
+  quoteVolume: number;
+  spreadBps: number;
+  acceptedReasons: string[];
+  auditCodes: string[];
+}
+
+export interface SignalSummaryView {
+  activeSignals: number;
+  aPlusSignals: number;
+  aSignals: number;
+  bPlusWatch: number;
+  expired: number;
+  riskBlocked: number;
+}
+
+export interface SignalStatusView {
+  state: SignalEngineState;
+  scannerState: string;
+  activeSignalCount: number;
+  watchSignalCount: number;
+  terminalSignalCount: number;
+  updatedAt?: string | null;
+  latestScannerRunAt?: string | null;
+  summary: SignalSummaryView;
 }
 
 export type TradeStatus =
