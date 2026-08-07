@@ -25,9 +25,9 @@ services:
       - key: ASTRAFORGE_RUN_MIGRATIONS_BEFORE_START
         value: "true"
       - key: ASTRAFORGE_MUTATION_AUTH_REQUIRED
+        value: "false"
+      - key: ASTRAFORGE_OPERATOR_AUTH_REMOVED
         value: "true"
-      - key: ASTRAFORGE_MUTATION_API_TOKEN
-        generateValue: true
       - key: ASTRAFORGE_EXECUTION_ENABLED
         value: "false"
       - key: ASTRAFORGE_EXECUTION_TAKE_PROFIT_R_MULTIPLE
@@ -62,7 +62,7 @@ services:
     headers:
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https:; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; connect-src 'self' https:; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
       - path: /*
         name: X-Content-Type-Options
         value: nosniff

@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     cors_allow_credentials: bool = True
     database_migrate_on_startup: bool = True
     mutation_auth_required: bool = True
+    operator_auth_removed: bool = False
     mutation_api_token: SecretStr | None = None
     operator_session_ttl_seconds: int = Field(default=43_200, ge=300, le=604_800)
     operator_login_max_attempts: int = Field(default=5, ge=3, le=20)
@@ -80,7 +81,7 @@ class Settings(BaseSettings):
     @field_validator("mutation_api_token")
     @classmethod
     def validate_mutation_api_token(cls, value: SecretStr | None) -> SecretStr | None:
-        """Require a strong exact ASCII operator token or an empty lock state."""
+        """Validate a legacy operator token when one is still present."""
 
         if value is None or not value.get_secret_value():
             return value
@@ -127,11 +128,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_mutation_security_mode(self) -> Settings:
-        """Prevent security bypass in staging and production."""
+        """Require an explicit owner-approved switch before production auth removal."""
 
-        if self.environment in {"staging", "production"} and not self.mutation_auth_required:
+        if (
+            self.environment in {"staging", "production"}
+            and not self.mutation_auth_required
+            and not self.operator_auth_removed
+        ):
             raise ValueError("Mutation authentication cannot be disabled outside development/test")
-
         return self
 
     @model_validator(mode="after")
@@ -197,7 +201,7 @@ class Settings(BaseSettings):
 
     @property
     def mutation_token_configured(self) -> bool:
-        """Return whether a non-empty mutation API token is configured."""
+        """Return whether a non-empty legacy mutation API token is configured."""
 
         return bool(self.mutation_api_token and self.mutation_api_token.get_secret_value())
 
