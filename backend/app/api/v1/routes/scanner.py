@@ -12,6 +12,7 @@ from app.core.security import MutationAuthorization, authorize_mutation
 from app.schemas.early_watch import EarlyWatchList
 from app.schemas.scanner import (
     CandidateLifecycle,
+    ScannerAuditRecord,
     ScannerCandidateList,
     ScannerCandidateSummary,
     ScannerDirection,
@@ -109,7 +110,7 @@ def _scanner_table_snapshot(service: ScannerService) -> ScannerTableSnapshot:
         if candidate.evidence.get("source_run_id") == latest.run_id
     ]
     candidates_by_symbol = {candidate.symbol: candidate for candidate in candidates}
-    audits_by_symbol: dict[str, list] = defaultdict(list)
+    audits_by_symbol: dict[str, list[ScannerAuditRecord]] = defaultdict(list)
     for audit in latest.audits:
         if audit.symbol:
             audits_by_symbol[audit.symbol].append(audit)
