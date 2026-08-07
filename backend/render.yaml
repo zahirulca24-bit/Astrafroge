@@ -26,9 +26,7 @@ services:
       - key: ASTRAFORGE_RUN_MIGRATIONS_BEFORE_START
         value: "true"
       - key: ASTRAFORGE_MUTATION_AUTH_REQUIRED
-        value: "true"
-      - key: ASTRAFORGE_MUTATION_API_TOKEN
-        generateValue: true
+        value: "false"
       - key: ASTRAFORGE_EXECUTION_ENABLED
         value: "false"
       - key: ASTRAFORGE_SCANNER_AUTO_START
