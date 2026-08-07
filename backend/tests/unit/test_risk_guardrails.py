@@ -12,7 +12,6 @@ from app.services.risk_guardrails import (
     RiskGuardrailPolicy,
 )
 
-
 NOW = datetime(2026, 8, 6, 12, 0, tzinfo=UTC)
 
 

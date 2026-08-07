@@ -97,7 +97,7 @@ class RiskGuardrailPolicy:
     emergency_stop: bool = False
 
     @classmethod
-    def from_environment(cls) -> "RiskGuardrailPolicy":
+    def from_environment(cls) -> RiskGuardrailPolicy:
         def integer(name: str, default: int, minimum: int, maximum: int) -> int:
             raw = os.getenv(name, str(default))
             value = int(raw)
@@ -173,11 +173,17 @@ class GuardedRiskService(RiskService):
                 assessment.symbol, trading_day
             ) >= self._guardrail_policy.per_symbol_daily_trade_limit:
                 reason = "PER_SYMBOL_DAILY_TRADE_LIMIT_REACHED"
-            elif self._settings.execution_take_profit_r_multiple < self._guardrail_policy.minimum_risk_reward:
+            elif (
+                self._settings.execution_take_profit_r_multiple
+                < self._guardrail_policy.minimum_risk_reward
+            ):
                 reason = "MINIMUM_RISK_REWARD_NOT_MET"
             elif snapshot is None:
                 reason = "ACCOUNT_SNAPSHOT_UNAVAILABLE"
-            elif (now - snapshot.captured_at).total_seconds() > self._guardrail_policy.account_snapshot_max_age_seconds:
+            elif (
+                (now - snapshot.captured_at).total_seconds()
+                > self._guardrail_policy.account_snapshot_max_age_seconds
+            ):
                 reason = "ACCOUNT_SNAPSHOT_STALE"
             else:
                 leverage = snapshot.leverage_by_symbol.get(assessment.symbol)
