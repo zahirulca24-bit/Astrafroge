@@ -10,6 +10,8 @@ from app.api.v1.dependencies import get_signal_service
 from app.schemas.scanner import ScannerDirection, ScannerGrade, ScannerSetup
 from app.schemas.signals import (
     SignalLifecycle,
+    SignalLink,
+    SignalLinkList,
     SignalRecord,
     SignalRecordList,
     SignalStatusResponse,
@@ -76,6 +78,25 @@ async def signal_cards(
 
     signals = [signal for signal in service.signals().signals if _card_eligible(signal)]
     return SignalRecordList(count=len(signals), signals=signals)
+
+
+@router.get("/links", response_model=SignalLinkList)
+async def signal_links(
+    service: SignalService = Depends(get_signal_service),  # noqa: B008
+) -> SignalLinkList:
+    """Return deterministic candidate-to-signal links for current card-eligible records."""
+
+    signals = [signal for signal in service.signals().signals if _card_eligible(signal)]
+    links = [
+        SignalLink(
+            candidate_id=signal.candidate_id,
+            signal_id=signal.signal_id,
+            symbol=signal.symbol,
+            lifecycle=signal.lifecycle,
+        )
+        for signal in signals
+    ]
+    return SignalLinkList(count=len(links), links=links)
 
 
 @router.get("/{signal_id}", response_model=SignalRecord)
