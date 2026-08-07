@@ -53,6 +53,10 @@ class BinancePublicClient:
             return None
         return delay
 
+    def _bounded_backoff_seconds(self, attempt: int) -> float:
+        backoff = self._retry_base_delay_seconds * float(2**attempt)
+        return float(min(self._rate_limit_max_delay_seconds, backoff))
+
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> tuple[Any, int]:
         started = perf_counter()
         last_error: Exception | None = None
@@ -79,9 +83,7 @@ class BinancePublicClient:
                         break
                     delay = self._retry_after_seconds(exc.response)
                     if delay is None:
-                        raise BinancePublicClientError(
-                            "Binance public market request was rate limited"
-                        ) from exc
+                        delay = self._bounded_backoff_seconds(attempt)
                     await self._sleep(delay)
                     continue
                 if not self._retryable_server_status(status_code):
@@ -101,7 +103,7 @@ class BinancePublicClient:
                 return payload, latency_ms
 
             if attempt + 1 < self._retry_attempts:
-                delay = self._retry_base_delay_seconds * (2**attempt)
+                delay = self._bounded_backoff_seconds(attempt)
                 await self._sleep(delay)
 
         message = (
