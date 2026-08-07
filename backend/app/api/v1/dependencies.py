@@ -6,10 +6,10 @@ from app.core.config import get_settings
 from app.integrations.binance.private_demo_client import BinanceDemoPrivateClient
 from app.integrations.binance.public_client import BinancePublicClient
 from app.persistence.repositories import TradingStateRepositories
+from app.persistence.risk_guardrails import PersistentGuardedRiskService
 from app.persistence.scanner_state import PersistentScannerService, ScannerRuntimeStateStore
 from app.persistence.service_adapters import (
     PersistentExecutionService,
-    PersistentRiskService,
     PersistentSignalService,
 )
 from app.services.execution import DemoExecutionService
@@ -17,6 +17,7 @@ from app.services.indicators import IndicatorService
 from app.services.journal_performance import JournalPerformanceService
 from app.services.market_data import MarketDataService
 from app.services.risk import RiskService
+from app.services.risk_guardrails import GuardedRiskService
 from app.services.scanner import ScannerService
 from app.services.signals import SignalService
 from app.services.trade_management import TradeManagementService
@@ -131,14 +132,14 @@ def get_signal_service() -> SignalService:
 
 @lru_cache
 def get_risk_service() -> RiskService:
-    """Build the account-backed Risk Engine with durable decision audit records."""
+    """Build the account-backed Risk Engine with complete fail-closed guardrails."""
 
     signal_service = get_signal_service()
     settings = get_settings()
     private_client = get_private_demo_client()
     if _runtime_repositories is None:
-        return RiskService(signal_service, settings, private_client)
-    return PersistentRiskService(
+        return GuardedRiskService(signal_service, settings, private_client)
+    return PersistentGuardedRiskService(
         signal_service,
         settings,
         private_client,
