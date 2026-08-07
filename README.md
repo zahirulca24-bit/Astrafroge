@@ -26,10 +26,11 @@ AstraForge is packaged as one repository with two deployable services:
 - Scanner & Signals **Phase 2 — Scanner Table Rebuild** merged in PR #22; final CI Run #71 passed.
 - Scanner & Signals **Phase 3 — Signal Card Integration** merged in PR #23; CI Run #73 passed.
 - Scanner & Signals **Phase 4 — Cross-Link Scanner ↔ Signal** merged in PR #24; CI Run #75 passed.
+- Scanner & Signals **Phase 5 — UI Consolidation** merged in PR #25; CI Run #77 passed.
 
 ### Current validation focus
 
-**Phase 5 — UI Consolidation is active.** Scanner and Signal work must remain backend-authoritative and the merged page must preserve the existing Phase 2–4 contracts without introducing local/fabricated signal truth.
+**Phase 6 — QA & Validation is active.** The merged page is now structurally complete; this phase verifies backend-authoritative scanner rows, status counts, signal linkage, responsive merged layout, error states and regression stability before the Scanner & Signals roadmap is closed.
 
 ## Locked Scanner & Signals layout
 
@@ -88,24 +89,24 @@ Mobile/tablet stack responsively; desktop remains side-by-side 50/50.
 - Shared selection state highlights the same candidate across both panels.
 - No fake candidate/signal relation is created.
 
-### 🚧 Phase 5 — UI Consolidation — IN PROGRESS
+### ✅ Phase 5 — UI Consolidation — COMPLETE
 
-- Replace the standalone Scanner/Signals content flow with one **Scanner & Signals** page.
-- Render `ScannerTablePanel` and `SignalCardsPanel` side by side on desktop.
-- Preserve responsive stacked layout on smaller screens.
-- Keep legacy internal Scanner/Signals routing compatible while exposing one user-facing Scanner & Signals navigation entry.
-- Reuse the backend Scanner table, Signal cards and Signal links contracts without modifying strategy/risk/execution behavior.
-- Add frontend layout/navigation regression coverage and backend route-contract regression coverage.
+- Standalone Scanner/Signals content flow is consolidated into one **Scanner & Signals** page.
+- `ScannerTablePanel` and `SignalCardsPanel` render side by side at desktop 50/50.
+- Smaller screens use responsive stacked layout.
+- Legacy internal Scanner/Signals routes remain compatible while the user-facing navigation exposes one Scanner & Signals entry.
+- Existing backend Scanner table, Signal cards and Signal links contracts are reused without changing strategy/risk/execution behavior.
+- Frontend layout/navigation regression coverage and backend route-contract regression coverage are included.
 
-### Phase 6 — QA & Validation
+### 🚧 Phase 6 — QA & Validation — IN PROGRESS
 
-- Verify 50 scanner rows for a 50-symbol selected universe.
-- Verify Ready / Near / Rejected / Failed counts.
+- Verify all 50 scanner rows are preserved for a 50-symbol selected universe.
+- Verify Ready / Near Setup / Rejected / Failed counts remain backend authoritative.
 - Verify qualified scanner candidate → Signal Engine record → Signal card.
-- Verify row/card cross-highlighting.
-- Verify no fake/local-derived signals.
-- Verify refresh/auto-scan and backend-unavailable states.
-- Run backend + frontend regression tests before merge.
+- Verify scanner row ↔ signal card cross-highlighting by candidate ID.
+- Verify no fake/local-derived signals or relationships are created.
+- Verify backend-unavailable and refresh states fail closed/cleanly.
+- Run full backend + frontend CI regression suite before final completion.
 
 ## Locked navigation target
 
