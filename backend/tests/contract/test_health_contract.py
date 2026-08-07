@@ -80,6 +80,7 @@ def test_openapi_contains_verified_runtime_routes(client: TestClient) -> None:
         "/api/v1/scanner/status",
         "/api/v1/scanner/stop",
         "/api/v1/signals",
+        "/api/v1/signals/cards",
         "/api/v1/signals/{signal_id}",
         "/api/v1/signals/status",
         "/api/v1/system/status",
