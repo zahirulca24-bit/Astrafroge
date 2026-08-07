@@ -19,6 +19,18 @@ from app.services.signals import SignalService
 router = APIRouter(prefix="/signals", tags=["signals"])
 
 
+def _card_eligible(signal: SignalRecord) -> bool:
+    """Return only normal UI cards backed by Signal Engine lifecycle/grade truth."""
+
+    return (
+        signal.lifecycle is SignalLifecycle.ACTIVE
+        and signal.grade in {ScannerGrade.A_PLUS, ScannerGrade.A}
+    ) or (
+        signal.lifecycle is SignalLifecycle.WATCH
+        and signal.grade is ScannerGrade.B_PLUS
+    )
+
+
 @router.get("/status", response_model=SignalStatusResponse)
 async def signal_status(
     service: SignalService = Depends(get_signal_service),  # noqa: B008
@@ -53,6 +65,16 @@ async def signal_list(
         and (grade is None or signal.grade is grade)
         and (lifecycle is None or signal.lifecycle is lifecycle)
     ]
+    return SignalRecordList(count=len(signals), signals=signals)
+
+
+@router.get("/cards", response_model=SignalRecordList)
+async def signal_cards(
+    service: SignalService = Depends(get_signal_service),  # noqa: B008
+) -> SignalRecordList:
+    """Return only backend-authoritative A+/A active and B+ watch signal cards."""
+
+    signals = [signal for signal in service.signals().signals if _card_eligible(signal)]
     return SignalRecordList(count=len(signals), signals=signals)
 
 
