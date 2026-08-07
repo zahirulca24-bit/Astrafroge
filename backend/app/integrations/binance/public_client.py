@@ -54,10 +54,8 @@ class BinancePublicClient:
         return delay
 
     def _bounded_backoff_seconds(self, attempt: int) -> float:
-        return min(
-            self._rate_limit_max_delay_seconds,
-            self._retry_base_delay_seconds * (2**attempt),
-        )
+        backoff = self._retry_base_delay_seconds * float(2**attempt)
+        return float(min(self._rate_limit_max_delay_seconds, backoff))
 
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> tuple[Any, int]:
         started = perf_counter()
