@@ -27,10 +27,11 @@ AstraForge is packaged as one repository with two deployable services:
 - Scanner & Signals **Phase 3 — Signal Card Integration** merged in PR #23; CI Run #73 passed.
 - Scanner & Signals **Phase 4 — Cross-Link Scanner ↔ Signal** merged in PR #24; CI Run #75 passed.
 - Scanner & Signals **Phase 5 — UI Consolidation** merged in PR #25; CI Run #77 passed.
+- Scanner & Signals **Phase 6 — QA & Validation** merged in PR #26; final CI Run #81 passed.
 
 ### Current validation focus
 
-**Phase 6 — QA & Validation is active.** The merged page is now structurally complete; this phase verifies backend-authoritative scanner rows, status counts, signal linkage, responsive merged layout, error states and regression stability before the Scanner & Signals roadmap is closed.
+**Scanner & Signals roadmap is COMPLETE (6/6).** The merged page is backend-authoritative, preserves the full scanner universe, links scanner candidates to real Signal Engine records, uses a desktop 50/50 layout, and has passed final backend + frontend CI regression validation.
 
 ## Locked Scanner & Signals layout
 
@@ -98,15 +99,15 @@ Mobile/tablet stack responsively; desktop remains side-by-side 50/50.
 - Existing backend Scanner table, Signal cards and Signal links contracts are reused without changing strategy/risk/execution behavior.
 - Frontend layout/navigation regression coverage and backend route-contract regression coverage are included.
 
-### 🚧 Phase 6 — QA & Validation — IN PROGRESS
+### ✅ Phase 6 — QA & Validation — COMPLETE
 
-- Verify all 50 scanner rows are preserved for a 50-symbol selected universe.
-- Verify Ready / Near Setup / Rejected / Failed counts remain backend authoritative.
-- Verify qualified scanner candidate → Signal Engine record → Signal card.
-- Verify scanner row ↔ signal card cross-highlighting by candidate ID.
-- Verify no fake/local-derived signals or relationships are created.
-- Verify backend-unavailable and refresh states fail closed/cleanly.
-- Run full backend + frontend CI regression suite before final completion.
+- All 50 scanner rows are preserved for a 50-symbol selected universe.
+- Ready / Near Setup / Rejected / Failed counts remain backend authoritative.
+- Qualified scanner candidate → Signal Engine record → Signal card path is covered.
+- Scanner row ↔ signal card cross-highlighting is linked by candidate ID.
+- No fake/local-derived signals or relationships are created.
+- Invalid/unavailable backend scanner contracts fail closed rather than fabricating data.
+- Full backend + frontend CI regression suite passed in final CI Run #81 before merge.
 
 ## Locked navigation target
 
