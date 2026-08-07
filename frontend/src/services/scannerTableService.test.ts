@@ -74,9 +74,12 @@ describe("scannerTableService", () => {
     expect(snapshot.rows.filter((row) => row.status === "REJECTED")).toHaveLength(48);
   });
 
-  it("fails closed when the backend scanner contract is unavailable", async () => {
-    get.mockRejectedValue(new Error("scanner unavailable"));
+  it("fails closed when the backend scanner contract is invalid", async () => {
+    get.mockResolvedValue({
+      summary: null,
+      rows: [],
+    });
 
-    await expect(scannerTableService.getLatest()).rejects.toThrow("scanner unavailable");
+    await expect(scannerTableService.getLatest()).rejects.toThrow("Invalid scanner table response");
   });
 });
