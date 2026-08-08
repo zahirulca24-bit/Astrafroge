@@ -52,13 +52,13 @@ def test_latest_table_rows_cover_ready_near_rejected_and_failed() -> None:
         audits=[
             ScannerAuditRecord(
                 code="TREND_SIDEWAYS",
-                detail="1H regime is SIDEWAYS",
+                detail="15M trend is SIDEWAYS",
                 symbol="XRPUSDT",
                 universe_rank=3,
             ),
             ScannerAuditRecord(
-                code="MISSING_5M_CANDLES",
-                detail="5m candles are unavailable",
+                code="MISSING_3M_CANDLES",
+                detail="3m candles are unavailable",
                 symbol="ADAUSDT",
                 universe_rank=4,
             ),
@@ -97,7 +97,7 @@ def test_latest_table_rows_cover_ready_near_rejected_and_failed() -> None:
     assert xrp.entry_5m == "Not evaluated"
 
 
-def test_latest_table_marks_15m_no_setup_only_after_setup_evaluation() -> None:
+def test_latest_table_marks_5m_no_setup_only_after_setup_evaluation() -> None:
     run = ScannerRunSummary(
         run_id="run-1",
         run_type=ScannerRunType.FULL_UNIVERSE_SCAN,
@@ -112,7 +112,7 @@ def test_latest_table_marks_15m_no_setup_only_after_setup_evaluation() -> None:
                 symbol="SOLUSDT",
                 universe_rank=1,
                 direction=ScannerDirection.LONG,
-                timeframe="15m",
+                timeframe="5m",
             ),
             ScannerAuditRecord(
                 code="SETUP_NOT_DETECTED",
@@ -120,7 +120,7 @@ def test_latest_table_marks_15m_no_setup_only_after_setup_evaluation() -> None:
                 symbol="SOLUSDT",
                 universe_rank=1,
                 direction=ScannerDirection.LONG,
-                timeframe="15m",
+                timeframe="5m",
             ),
         ],
     )
