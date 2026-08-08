@@ -5,10 +5,15 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from pydantic import BaseModel
 
-from app.api.v1.dependencies import get_trade_management_service
+from app.api.v1.dependencies import (
+    get_journal_performance_service,
+    get_trade_management_service,
+)
 from app.core.security import MutationAuthorization, authorize_mutation
 from app.schemas.execution import DemoTradeRecord
+from app.schemas.journal_performance import JournalEntryList, JournalFilters
 from app.schemas.scanner import ScannerDirection, ScannerGrade
 from app.schemas.trade_management import (
     ManagedTradeRecordList,
@@ -17,9 +22,17 @@ from app.schemas.trade_management import (
     TradeManagementStatusResponse,
     TradeSortBy,
 )
+from app.services.journal_performance import JournalPerformanceService
 from app.services.trade_management import TradeManagementService
 
 router = APIRouter(prefix="/trade-management", tags=["trade-management"])
+
+
+class TradesJournalSnapshot(BaseModel):
+    """Single backend-authoritative payload for the merged Trades & Journal page."""
+
+    active_trades: ManagedTradeRecordList
+    journal: JournalEntryList
 
 
 @router.get("/status", response_model=TradeManagementStatusResponse)
@@ -55,6 +68,19 @@ async def tracked_trades(
             include_closed=include_closed,
             sort_by=sort_by,
         )
+    )
+
+
+@router.get("/trades-journal", response_model=TradesJournalSnapshot)
+async def trades_journal_snapshot(
+    trade_service: TradeManagementService = Depends(get_trade_management_service),  # noqa: B008
+    journal_service: JournalPerformanceService = Depends(get_journal_performance_service),  # noqa: B008
+) -> TradesJournalSnapshot:
+    """Return active trades and closed journal records from one backend truth boundary."""
+
+    return TradesJournalSnapshot(
+        active_trades=trade_service.trades(TradeListFilters(include_closed=False)),
+        journal=journal_service.journal(JournalFilters()),
     )
 
 
