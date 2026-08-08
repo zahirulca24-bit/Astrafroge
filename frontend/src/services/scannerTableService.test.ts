@@ -28,8 +28,8 @@ describe("scannerTableService", () => {
       rows: [
         { universe_rank: 1, symbol: "BTCUSDT", direction: "LONG", trend_1h: "Bullish", setup_15m: "Trend Pullback", entry_5m: "Entry Ready", status: "READY", audit_codes: [] },
         { universe_rank: 2, symbol: "ETHUSDT", direction: "LONG", trend_1h: "Bullish", setup_15m: "Trend Pullback", entry_5m: "Awaiting Trigger", status: "NEAR_SETUP", audit_codes: [] },
-        { universe_rank: 3, symbol: "XRPUSDT", direction: null, trend_1h: "Sideways", setup_15m: "No setup", entry_5m: "Unavailable", status: "REJECTED", primary_reason: "1H regime is SIDEWAYS", audit_codes: ["TREND_SIDEWAYS"] },
-        { universe_rank: 4, symbol: "ADAUSDT", direction: null, trend_1h: "Unavailable", setup_15m: "Unavailable", entry_5m: "Unavailable", status: "FAILED", primary_reason: "5m candles are unavailable", audit_codes: ["MISSING_5M_CANDLES"] },
+        { universe_rank: 3, symbol: "XRPUSDT", direction: null, trend_1h: "Sideways", setup_15m: "No setup", entry_5m: "Unavailable", status: "REJECTED", primary_reason: "15M trend is SIDEWAYS", audit_codes: ["TREND_SIDEWAYS"] },
+        { universe_rank: 4, symbol: "ADAUSDT", direction: null, trend_1h: "Unavailable", setup_15m: "Unavailable", entry_5m: "Unavailable", status: "FAILED", primary_reason: "1m candles are unavailable", audit_codes: ["MISSING_1M_CANDLES"] },
       ],
     });
 
@@ -37,6 +37,11 @@ describe("scannerTableService", () => {
 
     expect(snapshot.summary).toMatchObject({ total: 4, ready: 1, nearSetup: 1, rejected: 1, failed: 1 });
     expect(snapshot.rows.map((row) => row.status)).toEqual(["READY", "NEAR_SETUP", "REJECTED", "FAILED"]);
+    expect(snapshot.rows[0]).toMatchObject({
+      trend15m: "Bullish",
+      setup5m: "Trend Pullback",
+      entry1m3m: "Entry Ready",
+    });
     expect(get).toHaveBeenCalledWith("/api/v1/scanner/evaluations/latest", { signal: undefined });
   });
 
