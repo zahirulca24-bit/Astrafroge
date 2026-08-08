@@ -236,9 +236,9 @@ const ScannerRow: React.FC<{
     <td className="px-2 py-2 text-zinc-500">{row.universeRank}</td>
     <td className="px-2 py-2 font-bold text-white">{row.symbol}</td>
     <td className={row.direction === "LONG" ? "px-2 py-2 text-emerald-400" : row.direction === "SHORT" ? "px-2 py-2 text-rose-400" : "px-2 py-2 text-zinc-500"}>{row.direction ?? "—"}</td>
-    <td className="px-2 py-2 text-zinc-300">{row.trend1h}</td>
-    <td className="max-w-36 truncate px-2 py-2 text-zinc-300" title={row.setup15m}>{row.setup15m}</td>
-    <td className="px-2 py-2 text-zinc-300">{row.entry5m}</td>
+    <td className="px-2 py-2 text-zinc-300">{row.trend15m}</td>
+    <td className="max-w-36 truncate px-2 py-2 text-zinc-300" title={row.setup5m}>{row.setup5m}</td>
+    <td className="px-2 py-2 text-zinc-300">{row.entry1m3m}</td>
     <td className="max-w-36 truncate px-2 py-2 text-zinc-300" title={row.setupName ?? ""}>{row.setupName ?? "—"}</td>
     <td className="px-2 py-2 text-zinc-200">{valueOrDash(row.score)}</td>
     <td className="px-2 py-2 text-zinc-200">{row.confidence === null ? "—" : `${row.confidence}%`}</td>
