@@ -382,7 +382,7 @@ class FakeMarket:
         return MarketStatus(state="connected", checked_at=NOW, exchange_time=NOW)
 
     async def candles(self, symbol: str, interval: str, limit: int) -> MarketCandleSeries:
-        step = {"1h": 60, "15m": 15, "5m": 5}[interval]
+        step = {"1h": 60, "15m": 15, "5m": 5, "3m": 3, "1m": 1}[interval]
         items = [
             candle(
                 close=str(100 + index / 100),
@@ -447,7 +447,7 @@ class FakeUniverse:
 def _series(
     interval: str, count: int = 200, *, stale: bool = False
 ) -> tuple[MarketCandleSeries, IndicatorSeries]:
-    step = {"1h": 60, "15m": 15, "5m": 5}[interval]
+    step = {"1h": 60, "15m": 15, "5m": 5, "3m": 3, "1m": 1}[interval]
     candles = [
         candle(
             close=str(100 + index / 100),
