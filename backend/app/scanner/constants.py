@@ -21,14 +21,16 @@ MAX_CLOCK_SKEW = timedelta(seconds=5)
 FUTURE_CANDLE_TOLERANCE = timedelta(seconds=2)
 UNIVERSE_MAX_AGE = timedelta(seconds=60)
 TIMEFRAME_MAX_AGE = {
-    "1h": timedelta(minutes=75),
     "15m": timedelta(minutes=22, seconds=30),
     "5m": timedelta(minutes=7, seconds=30),
+    "3m": timedelta(minutes=4, seconds=30),
+    "1m": timedelta(minutes=1, seconds=30),
 }
 TIMEFRAME_INTERVAL = {
-    "1h": timedelta(hours=1),
     "15m": timedelta(minutes=15),
     "5m": timedelta(minutes=5),
+    "3m": timedelta(minutes=3),
+    "1m": timedelta(minutes=1),
 }
 
 SETUP_IDS = (
@@ -101,15 +103,23 @@ REJECTION_CODES = frozenset(
         "MISSING_1H_CANDLES",
         "MISSING_15M_CANDLES",
         "MISSING_5M_CANDLES",
+        "MISSING_3M_CANDLES",
+        "MISSING_1M_CANDLES",
         "INSUFFICIENT_1H_HISTORY",
         "INSUFFICIENT_15M_HISTORY",
         "INSUFFICIENT_5M_HISTORY",
+        "INSUFFICIENT_3M_HISTORY",
+        "INSUFFICIENT_1M_HISTORY",
         "STALE_1H_DATA",
         "STALE_15M_DATA",
         "STALE_5M_DATA",
+        "STALE_3M_DATA",
+        "STALE_1M_DATA",
         "INVALID_1H_OHLCV",
         "INVALID_15M_OHLCV",
         "INVALID_5M_OHLCV",
+        "INVALID_3M_OHLCV",
+        "INVALID_1M_OHLCV",
         "MISSING_REQUIRED_INDICATOR",
         "INDICATOR_CALCULATION_FAILED",
         "STRUCTURE_INSUFFICIENT",
