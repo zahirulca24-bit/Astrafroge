@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import ROUND_UP, Decimal, InvalidOperation
 from typing import Annotated
 from urllib.parse import urlparse
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import SecretStr
@@ -28,6 +30,7 @@ from app.schemas.execution import (
 )
 from app.schemas.scanner import ScannerDirection, ScannerGrade, ScannerSetup
 from app.schemas.signals import SignalLifecycle
+from app.services.exchange_rules import ExchangeRuleError, parse_symbol_trading_rules
 from app.services.execution import DemoExecutionService
 
 router = APIRouter(prefix="/execution/demo", tags=["execution"])
@@ -35,6 +38,16 @@ router = APIRouter(prefix="/execution/demo", tags=["execution"])
 
 def _secret_configured(value: SecretStr | None) -> bool:
     return bool(value and value.get_secret_value())
+
+
+def _exchange_decimal(value: object, *, field: str) -> Decimal:
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=502, detail=f"Invalid Binance Demo field: {field}") from exc
+    if not parsed.is_finite():
+        raise HTTPException(status_code=502, detail=f"Invalid Binance Demo field: {field}")
+    return parsed
 
 
 @router.get("/status", response_model=DemoExecutionStatusResponse)
@@ -138,6 +151,120 @@ async def execution_account_diagnostic(
         account_can_trade=bool(account_payload.get("canTrade", False)),
         checked_at=checked_at,
     )
+
+
+@router.post("/manual-test", response_model=dict[str, str])
+async def execution_manual_test(
+    symbol: Annotated[str, Query(min_length=6, max_length=20)] = "BTCUSDT",
+    direction: Annotated[ScannerDirection, Query()] = ScannerDirection.LONG,
+    settings: Settings = Depends(get_settings),  # noqa: B008
+    client: BinanceDemoPrivateClient | None = Depends(get_private_demo_client),  # noqa: B008
+    _authorization: MutationAuthorization = Depends(authorize_mutation),  # noqa: B008
+) -> dict[str, str]:
+    """Open one smallest-valid Binance Demo/Testnet market position for manual verification."""
+
+    normalized_symbol = symbol.strip().upper()
+    if not normalized_symbol.isalnum():
+        raise HTTPException(status_code=422, detail="Invalid symbol")
+    if client is None or settings.binance_demo_base_url is None:
+        raise HTTPException(status_code=409, detail="Binance Demo private API is not configured")
+
+    demo_host = urlparse(settings.binance_demo_base_url).netloc.lower()
+    public_host = urlparse(settings.binance_public_base_url).netloc.lower()
+    if demo_host == public_host or ("demo" not in demo_host and "testnet" not in demo_host):
+        raise HTTPException(
+            status_code=409,
+            detail="Manual test trade is locked to an explicit Binance Demo/Testnet host",
+        )
+
+    try:
+        mode = client.position_mode()
+        if mode.get("dualSidePosition") is not False:
+            raise HTTPException(
+                status_code=409,
+                detail="Manual Demo test requires Binance One-way position mode",
+            )
+
+        account_payload = client.account()
+        if account_payload.get("canTrade") is not True:
+            raise HTTPException(status_code=409, detail="Binance Demo account cannot trade")
+        available_balance = _exchange_decimal(
+            account_payload.get("availableBalance", "0"),
+            field="availableBalance",
+        )
+        if available_balance <= 0:
+            raise HTTPException(status_code=409, detail="Binance Demo available balance is zero")
+
+        rules = parse_symbol_trading_rules(
+            client.exchange_info(),
+            symbol=normalized_symbol,
+        )
+        mark_price = _exchange_decimal(
+            client.mark_price(normalized_symbol).get("markPrice"),
+            field="markPrice",
+        )
+        if mark_price <= 0:
+            raise HTTPException(status_code=502, detail="Binance Demo mark price is unavailable")
+
+        raw_notional_quantity = rules.min_notional / mark_price
+        notional_steps = (
+            raw_notional_quantity / rules.quantity_step
+        ).to_integral_value(rounding=ROUND_UP)
+        quantity = max(
+            rules.quantity_min,
+            notional_steps * rules.quantity_step,
+        )
+        if quantity > rules.quantity_max:
+            raise HTTPException(status_code=409, detail="Minimum valid order exceeds symbol limits")
+        rules.validate_market_notional(quantity=quantity, mark_price=mark_price)
+
+        side = "BUY" if direction is ScannerDirection.LONG else "SELL"
+        client_order_id = f"af-manual-{uuid4().hex[:18]}"
+        order_payload = client.place_market_order(
+            symbol=normalized_symbol,
+            side=side,
+            quantity=format(quantity, "f"),
+            new_client_order_id=client_order_id,
+        )
+    except HTTPException:
+        raise
+    except ExchangeRuleError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BinanceDemoPrivateClientError as exc:
+        detail = "Binance Demo manual test order was rejected"
+        if exc.exchange_code is not None:
+            detail += f" (exchange code {exc.exchange_code})"
+        raise HTTPException(status_code=502, detail=detail) from exc
+
+    if order_payload.get("clientOrderId") != client_order_id:
+        raise HTTPException(status_code=502, detail="Binance Demo order identity was not verified")
+    if order_payload.get("status") != "FILLED":
+        raise HTTPException(status_code=502, detail="Binance Demo manual test order was not fully filled")
+
+    executed_quantity = _exchange_decimal(
+        order_payload.get("executedQty", "0"),
+        field="executedQty",
+    )
+    average_price = _exchange_decimal(order_payload.get("avgPrice", "0"), field="avgPrice")
+    if executed_quantity <= 0 or average_price <= 0:
+        raise HTTPException(status_code=502, detail="Binance Demo fill was not verified")
+
+    return {
+        "mode": "BINANCE_DEMO_MANUAL_TEST",
+        "symbol": normalized_symbol,
+        "direction": direction.value,
+        "side": side,
+        "requested_quantity": format(quantity, "f"),
+        "executed_quantity": format(executed_quantity, "f"),
+        "mark_price": format(mark_price, "f"),
+        "average_price": format(average_price, "f"),
+        "estimated_notional_usdt": format(quantity * mark_price, "f"),
+        "available_balance_usdt": format(available_balance, "f"),
+        "order_id": str(order_payload.get("orderId", "")),
+        "client_order_id": client_order_id,
+        "status": "FILLED",
+        "opened_at": datetime.now(UTC).isoformat(),
+    }
 
 
 @router.get("/plans", response_model=DemoExecutionPlanList)

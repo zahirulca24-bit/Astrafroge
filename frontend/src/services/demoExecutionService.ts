@@ -1,6 +1,23 @@
 import { DemoExecutionAccountSnapshot, DemoExecutionStatusSnapshot } from "../types/trading";
 import { apiClient, isRecord } from "./apiClient";
 
+export interface DemoManualTestTradeResult {
+  mode: string;
+  symbol: string;
+  direction: string;
+  side: string;
+  requestedQuantity: string;
+  executedQuantity: string;
+  markPrice: string;
+  averagePrice: string;
+  estimatedNotionalUsdt: string;
+  availableBalanceUsdt: string;
+  orderId: string;
+  clientOrderId: string;
+  status: string;
+  openedAt: string;
+}
+
 function readNumber(record: Record<string, unknown>, key: string): number {
   const parsed = typeof record[key] === "number" ? record[key] : Number(record[key]);
   if (!Number.isFinite(parsed)) throw new Error(`Invalid numeric field: ${key}`);
@@ -63,6 +80,30 @@ export const demoExecutionService = {
       totalUnrealizedPnlUsdt: readNumber(data, "total_unrealized_pnl_usdt"),
       balances: Array.isArray(data.balances) ? data.balances : [],
       openPositions: Array.isArray(data.open_positions) ? data.open_positions : [],
+    };
+  },
+
+  async openManualTestTrade(signal?: AbortSignal): Promise<DemoManualTestTradeResult> {
+    const data = await apiClient.post<unknown>(
+      "/api/v1/execution/demo/manual-test?symbol=BTCUSDT&direction=LONG",
+      { idempotent: true, signal },
+    );
+    if (!isRecord(data)) throw new Error("Invalid manual Demo trade response");
+    return {
+      mode: readString(data, "mode", true)!,
+      symbol: readString(data, "symbol", true)!,
+      direction: readString(data, "direction", true)!,
+      side: readString(data, "side", true)!,
+      requestedQuantity: readString(data, "requested_quantity", true)!,
+      executedQuantity: readString(data, "executed_quantity", true)!,
+      markPrice: readString(data, "mark_price", true)!,
+      averagePrice: readString(data, "average_price", true)!,
+      estimatedNotionalUsdt: readString(data, "estimated_notional_usdt", true)!,
+      availableBalanceUsdt: readString(data, "available_balance_usdt", true)!,
+      orderId: readString(data, "order_id", true)!,
+      clientOrderId: readString(data, "client_order_id", true)!,
+      status: readString(data, "status", true)!,
+      openedAt: readIsoDate(data, "opened_at", true)!,
     };
   },
 };
