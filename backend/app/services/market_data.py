@@ -15,7 +15,7 @@ from app.schemas.market import (
     MarketTicker,
 )
 
-_ALLOWED_INTERVALS = {"5m", "15m", "1h"}
+_ALLOWED_INTERVALS = {"1m", "3m", "5m", "15m", "1h"}
 
 
 def _utc_from_ms(value: Any) -> datetime:
@@ -145,7 +145,7 @@ class MarketDataService:
 
     async def candles(self, symbol: str, interval: str, limit: int) -> MarketCandleSeries:
         if interval not in _ALLOWED_INTERVALS:
-            raise ValueError("Interval must be one of: 5m, 15m, 1h")
+            raise ValueError("Interval must be one of: 1m, 3m, 5m, 15m, 1h")
         if limit < 1 or limit > 1000:
             raise ValueError("Kline limit must be between 1 and 1000")
         key = (symbol, interval, limit)
