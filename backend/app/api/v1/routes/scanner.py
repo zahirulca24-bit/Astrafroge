@@ -178,7 +178,11 @@ def _scanner_table_snapshot(service: ScannerService) -> ScannerTableSnapshot:
                 setup_15m=(
                     candidate.setup_name
                     if candidate is not None
-                    else "No setup" if not failed else "Unavailable"
+                    else "Unavailable"
+                    if failed
+                    else "No setup"
+                    if any(audit.timeframe == "15m" for audit in audits)
+                    else "Not evaluated"
                 ),
                 entry_5m=(
                     "Entry Ready"
@@ -186,6 +190,8 @@ def _scanner_table_snapshot(service: ScannerService) -> ScannerTableSnapshot:
                     else "Awaiting Trigger"
                     if candidate is not None
                     else "Unavailable"
+                    if failed
+                    else "Not evaluated"
                 ),
                 grade=candidate.grade if candidate is not None else None,
                 score=candidate.score if candidate is not None else None,
