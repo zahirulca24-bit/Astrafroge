@@ -111,7 +111,26 @@ function mapJournal(item: unknown): JournalTrade {
   };
 }
 
+export interface TradesJournalSnapshot {
+  activeTrades: ActiveTrade[];
+  journalTrades: JournalTrade[];
+}
+
 export const tradingRecordsService = {
+  async getTradesJournal(signal?: AbortSignal): Promise<TradesJournalSnapshot> {
+    const payload = await apiClient.get<unknown>("/api/v1/trade-management/trades-journal", { signal });
+    if (!isRecord(payload) || !isRecord(payload.active_trades) || !isRecord(payload.journal)) {
+      throw new Error("Invalid Trades & Journal response");
+    }
+    if (!Array.isArray(payload.active_trades.trades) || !Array.isArray(payload.journal.entries)) {
+      throw new Error("Invalid Trades & Journal response");
+    }
+    return {
+      activeTrades: payload.active_trades.trades.map(mapTrade),
+      journalTrades: payload.journal.entries.map(mapJournal),
+    };
+  },
+
   async getActiveTrades(signal?: AbortSignal): Promise<ActiveTrade[]> {
     const payload = await apiClient.get<unknown>("/api/v1/trade-management/trades?include_closed=false", { signal });
     if (!isRecord(payload) || !Array.isArray(payload.trades)) throw new Error("Invalid active-trades response");
