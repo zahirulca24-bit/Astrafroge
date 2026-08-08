@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from time import perf_counter
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 
 from app.api.v1.dependencies import get_scanner_service
 from app.core.security import MutationAuthorization, authorize_mutation
@@ -52,15 +52,6 @@ _SYMBOL_DATA_FAILURE_CODES = {
     "STRUCTURE_INSUFFICIENT",
     "UNIVERSE_ELIGIBILITY_FAILED",
 }
-
-
-class ScannerRunRequestResponse(BaseModel):
-    """Immediate acknowledgement for a non-blocking manual full-scan request."""
-
-    accepted: bool
-    run_active: bool
-    message: str
-    latest_run: ScannerRunSummary | None = None
 
 
 def _latest_full_run(service: ScannerService) -> ScannerRunSummary | None:
@@ -255,42 +246,18 @@ async def scanner_stop(
 
 @router.post("/run-now", response_model=ScannerRunSummary)
 async def scanner_run_now(
+    response: Response,
     service: ScannerService = Depends(get_scanner_service),  # noqa: B008
     _authorization: MutationAuthorization = Depends(authorize_mutation),  # noqa: B008
 ) -> ScannerRunSummary:
-    """Backward-compatible blocking manual Full Universe Scan endpoint."""
+    """Run one authorized Full Universe Scan and expose its measured server duration."""
 
-    return await service.run_now()
-
-
-@router.post(
-    "/run-now/request",
-    response_model=ScannerRunRequestResponse,
-    status_code=202,
-)
-async def scanner_request_run_now(
-    background_tasks: BackgroundTasks,
-    service: ScannerService = Depends(get_scanner_service),  # noqa: B008
-    _authorization: MutationAuthorization = Depends(authorize_mutation),  # noqa: B008
-) -> ScannerRunRequestResponse:
-    """Queue one manual Full Universe Scan and acknowledge without holding the HTTP request."""
-
-    status = service.status()
-    if status.run_active:
-        return ScannerRunRequestResponse(
-            accepted=False,
-            run_active=True,
-            message="A Scanner run is already active; no duplicate run was queued.",
-            latest_run=status.latest_run,
-        )
-
-    background_tasks.add_task(service.run_now)
-    return ScannerRunRequestResponse(
-        accepted=True,
-        run_active=True,
-        message="Full Universe Scan accepted and queued for background execution.",
-        latest_run=status.latest_run,
-    )
+    started = perf_counter()
+    run = await service.run_now()
+    elapsed_ms = max(0.0, (perf_counter() - started) * 1000)
+    response.headers["Server-Timing"] = f"scanner;dur={elapsed_ms:.1f}"
+    response.headers["X-Scanner-Duration-Ms"] = f"{elapsed_ms:.1f}"
+    return run
 
 
 @router.get("/evaluations/latest", response_model=ScannerTableSnapshot)
