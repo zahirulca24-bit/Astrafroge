@@ -74,14 +74,13 @@ class SystemScannerClock:
 
 
 def next_five_minute_boundary(value: datetime) -> datetime:
-    """Return the next exchange-time five-minute boundary strictly after value."""
+    """Return the next active-refresh boundary strictly after value.
+
+    The compatibility name is retained while the scalping contract refreshes every minute.
+    """
 
     normalized = value.astimezone(UTC)
-    floor = normalized.replace(
-        minute=(normalized.minute // 5) * 5,
-        second=0,
-        microsecond=0,
-    )
+    floor = normalized.replace(second=0, microsecond=0)
     return floor + ACTIVE_REFRESH_INTERVAL
 
 

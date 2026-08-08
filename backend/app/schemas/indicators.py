@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-type IndicatorInterval = Literal["5m", "15m", "1h"]
+type IndicatorInterval = Literal["1m", "3m", "5m", "15m", "1h"]
 type MarketStructureState = Literal["bullish", "bearish", "range", "insufficient_data"]
 
 

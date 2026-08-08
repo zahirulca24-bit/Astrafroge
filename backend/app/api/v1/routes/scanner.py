@@ -38,15 +38,23 @@ _SYMBOL_DATA_FAILURE_CODES = {
     "MISSING_1H_CANDLES",
     "MISSING_15M_CANDLES",
     "MISSING_5M_CANDLES",
+    "MISSING_1M_CANDLES",
+    "MISSING_3M_CANDLES",
     "INSUFFICIENT_1H_HISTORY",
     "INSUFFICIENT_15M_HISTORY",
     "INSUFFICIENT_5M_HISTORY",
+    "INSUFFICIENT_1M_HISTORY",
+    "INSUFFICIENT_3M_HISTORY",
     "STALE_1H_DATA",
     "STALE_15M_DATA",
     "STALE_5M_DATA",
+    "STALE_1M_DATA",
+    "STALE_3M_DATA",
     "INVALID_1H_OHLCV",
     "INVALID_15M_OHLCV",
     "INVALID_5M_OHLCV",
+    "INVALID_1M_OHLCV",
+    "INVALID_3M_OHLCV",
     "MISSING_REQUIRED_INDICATOR",
     "INDICATOR_CALCULATION_FAILED",
     "STRUCTURE_INSUFFICIENT",
@@ -181,7 +189,7 @@ def _scanner_table_snapshot(service: ScannerService) -> ScannerTableSnapshot:
                     else "Unavailable"
                     if failed
                     else "No setup"
-                    if any(audit.timeframe == "15m" for audit in audits)
+                    if any(audit.timeframe == "5m" for audit in audits)
                     else "Not evaluated"
                 ),
                 entry_5m=(

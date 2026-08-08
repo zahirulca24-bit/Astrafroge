@@ -66,7 +66,7 @@ class MarketCandleSeries(BaseModel):
     """Closed-candle series with source and freshness metadata."""
 
     symbol: str
-    interval: Literal["5m", "15m", "1h"]
+    interval: Literal["1m", "3m", "5m", "15m", "1h"]
     source: Literal["binance_usdm_public"] = "binance_usdm_public"
     fetched_at: datetime
     stale: bool = False

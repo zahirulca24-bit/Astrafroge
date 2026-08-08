@@ -91,18 +91,28 @@ class ScannerService(ScannerFullService):
                 run.evaluated_symbols = len(active)
                 for candidate in active:
                     try:
-                        current_h, current_s, current_e, counts, freshness, structure = (
-                            await self._load_refresh_inputs(candidate.symbol, exchange_time)
+                        (
+                            current_h,
+                            current_s,
+                            current_e,
+                            current_fast_e,
+                            counts,
+                            freshness,
+                            structure,
+                        ) = await self._load_refresh_inputs(
+                            candidate.symbol,
+                            exchange_time,
                         )
                         current_direction = self._engine.regime(current_h, structure)
                         if current_direction is not candidate.direction:
                             raise ScannerEvaluationError(
                                 "TREND_DIRECTION_MISMATCH",
-                                "Current 1H regime conflicts with candidate direction",
-                                "1h",
+                                "Current 15M trend conflicts with candidate direction",
+                                "15m",
                             )
-                        self._engine.volatility(current_s[0], "15m")
-                        self._engine.volatility(current_e[0], "5m")
+                        self._engine.volatility(current_s[0], "5m")
+                        self._engine.volatility(current_e[0], "3m")
+                        self._engine.volatility(current_fast_e[0], "1m")
                         if self._engine.invalidated(candidate, current_s[0], current_e[0]):
                             self._terminal(
                                 candidate,
@@ -149,15 +159,23 @@ class ScannerService(ScannerFullService):
                             exchange_time=exchange_time,
                             counts=counts,
                             freshness=freshness,
+                            fast_e=current_fast_e,
                         )
                         match = self._stored_match(candidate)
                         entry_ready = (
                             current_e[0].candle.close_time > candidate.setup_confirmed_at
                             and exchange_time < candidate.expires_at
-                            and self._engine.shared_entry(
-                                current_e,
-                                candidate.direction,
-                                candidate.entry_trigger_price,
+                            and (
+                                self._engine.shared_entry(
+                                    current_e,
+                                    candidate.direction,
+                                    candidate.entry_trigger_price,
+                                )
+                                or self._engine.shared_entry(
+                                    current_fast_e,
+                                    candidate.direction,
+                                    candidate.entry_trigger_price,
+                                )
                             )
                         )
                         score, confidence, grade, components = self._engine.score(
@@ -290,6 +308,7 @@ class ScannerService(ScannerFullService):
         list[Frame],
         list[Frame],
         list[Frame],
+        list[Frame],
         dict[str, int],
         dict[str, Decimal],
         str,
@@ -298,7 +317,7 @@ class ScannerService(ScannerFullService):
         counts: dict[str, int] = {}
         freshness: dict[str, Decimal] = {}
         structure = "insufficient_data"
-        for interval in ("1h", "15m", "5m"):
+        for interval in ("15m", "5m", "3m", "1m"):
             candles = await self._market.candles(symbol, interval, 250)
             indicators = await self._indicators.build(symbol, interval, 250)
             aligned, ratio = self._engine.align(
@@ -309,14 +328,23 @@ class ScannerService(ScannerFullService):
             frames[interval] = aligned
             counts[interval] = min(len(candles.candles), len(indicators.points))
             freshness[interval] = ratio
-            if interval == "1h":
+            if interval == "15m":
                 structure = indicators.structure.state
         return (
-            frames["1h"],
             frames["15m"],
             frames["5m"],
-            counts,
-            freshness,
+            frames["3m"],
+            frames["1m"],
+            {
+                "1h": counts["15m"],
+                "15m": counts["5m"],
+                "5m": min(counts["3m"], counts["1m"]),
+            },
+            {
+                "1h": freshness["15m"],
+                "15m": freshness["5m"],
+                "5m": min(freshness["3m"], freshness["1m"]),
+            },
             structure,
         )
 

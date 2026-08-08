@@ -178,7 +178,7 @@ export const ScannerTablePanel: React.FC = () => {
         <table className="w-full min-w-[1050px] border-collapse text-[10px]">
           <thead className="sticky top-0 z-10 bg-zinc-950 text-left uppercase tracking-wide text-zinc-500">
             <tr>
-              {["#", "Symbol", "Side", "1H Trend", "15M Setup", "5M Entry", "Strategy", "Score", "Confidence", "R:R", "Status", "Reason", "Chart"].map((label) => <th key={label} className="border-b border-zinc-800 px-2 py-2">{label}</th>)}
+              {["#", "Symbol", "Side", "15M Trend", "5M Setup", "1M/3M Entry", "Strategy", "Score", "Confidence", "R:R", "Status", "Reason", "Chart"].map((label) => <th key={label} className="border-b border-zinc-800 px-2 py-2">{label}</th>)}
             </tr>
           </thead>
           <tbody>

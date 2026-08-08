@@ -16,7 +16,7 @@ router = APIRouter(prefix="/indicators", tags=["indicators"])
 async def indicator_series(
     symbol: str,
     service: IndicatorService = Depends(get_indicator_service),  # noqa: B008
-    interval: Annotated[Literal["5m", "15m", "1h"], Query()] = "15m",
+    interval: Annotated[Literal["1m", "3m", "5m", "15m", "1h"], Query()] = "15m",
     limit: Annotated[int, Query(ge=1, le=1000)] = 250,
 ) -> IndicatorSeries:
     """Return deterministic indicators aligned to closed candles."""
