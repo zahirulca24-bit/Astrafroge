@@ -43,15 +43,23 @@ _SYMBOL_DATA_FAILURE_CODES = {
     "MISSING_1H_CANDLES",
     "MISSING_15M_CANDLES",
     "MISSING_5M_CANDLES",
+    "MISSING_1M_CANDLES",
+    "MISSING_3M_CANDLES",
     "INSUFFICIENT_1H_HISTORY",
     "INSUFFICIENT_15M_HISTORY",
     "INSUFFICIENT_5M_HISTORY",
+    "INSUFFICIENT_1M_HISTORY",
+    "INSUFFICIENT_3M_HISTORY",
     "STALE_1H_DATA",
     "STALE_15M_DATA",
     "STALE_5M_DATA",
+    "STALE_1M_DATA",
+    "STALE_3M_DATA",
     "INVALID_1H_OHLCV",
     "INVALID_15M_OHLCV",
     "INVALID_5M_OHLCV",
+    "INVALID_1M_OHLCV",
+    "INVALID_3M_OHLCV",
     "MISSING_REQUIRED_INDICATOR",
     "INDICATOR_CALCULATION_FAILED",
     "STRUCTURE_INSUFFICIENT",
@@ -208,7 +216,7 @@ class ScannerFullService(ScannerRuntimeBase):
                         audits.append(
                             ScannerAuditRecord(
                                 code="REENTRY_COOLDOWN_ACTIVE",
-                                detail="Three-candle / 45-minute re-entry cooldown is active",
+                                detail="Scalping re-entry cooldown is active",
                                 symbol=candidate.symbol,
                                 universe_rank=candidate.universe_rank,
                                 direction=candidate.direction,
@@ -298,7 +306,7 @@ class ScannerFullService(ScannerRuntimeBase):
         freshness: dict[str, Decimal] = {}
         counts: dict[str, int] = {}
         structures: dict[str, str] = {}
-        for interval in ("1h", "15m", "5m"):
+        for interval in ("15m", "5m", "3m", "1m"):
             candles = await self._market.candles(universe.symbol, interval, 250)
             indicators = await self._indicators.build(universe.symbol, interval, 250)
             aligned, freshness_ratio = self._engine.align(
@@ -310,18 +318,20 @@ class ScannerFullService(ScannerRuntimeBase):
             freshness[interval] = freshness_ratio
             counts[interval] = min(len(candles.candles), len(indicators.points))
             structures[interval] = indicators.structure.state
-        direction = self._engine.regime(frames["1h"], structures["1h"])
-        self._engine.volatility(frames["15m"][0], "15m")
+        direction = self._engine.regime(frames["15m"], structures["15m"])
         self._engine.volatility(frames["5m"][0], "5m")
+        self._engine.volatility(frames["3m"][0], "3m")
+        self._engine.volatility(frames["1m"][0], "1m")
         return EvaluationContext(
             direction=direction,
-            h=frames["1h"],
-            s=frames["15m"],
-            e=frames["5m"],
+            h=frames["15m"],
+            s=frames["5m"],
+            e=frames["3m"],
             universe=universe,
             exchange_time=exchange_time,
-            counts=counts,
-            freshness=freshness,
+            counts={"1h": counts["15m"], "15m": counts["5m"], "5m": min(counts["3m"], counts["1m"])},
+            freshness={"1h": freshness["15m"], "15m": freshness["5m"], "5m": min(freshness["3m"], freshness["1m"])},
+            fast_e=frames["1m"],
         )
 
     async def _evaluate_symbol(
@@ -343,7 +353,7 @@ class ScannerFullService(ScannerRuntimeBase):
                 symbol=universe.symbol,
                 universe_rank=universe.rank,
                 direction=context.direction,
-                timeframe=failure.timeframe or "15m",
+                timeframe=failure.timeframe or "5m",
             )
             for failure in setup_failures
         ]
@@ -355,7 +365,7 @@ class ScannerFullService(ScannerRuntimeBase):
                     symbol=universe.symbol,
                     universe_rank=universe.rank,
                     direction=context.direction,
-                    timeframe="15m",
+                    timeframe="5m",
                 )
             )
             return None, audits, context
@@ -388,10 +398,9 @@ class ScannerFullService(ScannerRuntimeBase):
         entry_ready = (
             context.e[0].candle.close_time > match.setup_confirmed_at
             and context.exchange_time < match.expires_at
-            and self._engine.shared_entry(
-                context.e,
-                context.direction,
-                match.entry_trigger_price,
+            and (
+                self._engine.shared_entry(context.e, context.direction, match.entry_trigger_price)
+                or (context.fast_e is not None and self._engine.shared_entry(context.fast_e, context.direction, match.entry_trigger_price))
             )
         )
         score, confidence, grade, components = self._engine.score(
