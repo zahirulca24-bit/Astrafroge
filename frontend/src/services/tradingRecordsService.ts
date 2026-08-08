@@ -116,31 +116,43 @@ export interface TradesJournalSnapshot {
   journalTrades: JournalTrade[];
 }
 
+async function loadTradesJournal(signal?: AbortSignal): Promise<TradesJournalSnapshot> {
+  const payload = await apiClient.get<unknown>("/api/v1/trade-management/trades-journal", { signal });
+  if (!isRecord(payload) || !isRecord(payload.active_trades) || !isRecord(payload.journal)) {
+    throw new Error("Invalid Trades & Journal response");
+  }
+  if (!Array.isArray(payload.active_trades.trades) || !Array.isArray(payload.journal.entries)) {
+    throw new Error("Invalid Trades & Journal response");
+  }
+  return {
+    activeTrades: payload.active_trades.trades.map(mapTrade),
+    journalTrades: payload.journal.entries.map(mapJournal),
+  };
+}
+
+let sharedSnapshotRequest: Promise<TradesJournalSnapshot> | null = null;
+
+async function sharedTradesJournal(signal?: AbortSignal): Promise<TradesJournalSnapshot> {
+  if (signal) return loadTradesJournal(signal);
+  if (sharedSnapshotRequest === null) {
+    sharedSnapshotRequest = loadTradesJournal().finally(() => {
+      sharedSnapshotRequest = null;
+    });
+  }
+  return sharedSnapshotRequest;
+}
+
 export const tradingRecordsService = {
   async getTradesJournal(signal?: AbortSignal): Promise<TradesJournalSnapshot> {
-    const payload = await apiClient.get<unknown>("/api/v1/trade-management/trades-journal", { signal });
-    if (!isRecord(payload) || !isRecord(payload.active_trades) || !isRecord(payload.journal)) {
-      throw new Error("Invalid Trades & Journal response");
-    }
-    if (!Array.isArray(payload.active_trades.trades) || !Array.isArray(payload.journal.entries)) {
-      throw new Error("Invalid Trades & Journal response");
-    }
-    return {
-      activeTrades: payload.active_trades.trades.map(mapTrade),
-      journalTrades: payload.journal.entries.map(mapJournal),
-    };
+    return sharedTradesJournal(signal);
   },
 
   async getActiveTrades(signal?: AbortSignal): Promise<ActiveTrade[]> {
-    const payload = await apiClient.get<unknown>("/api/v1/trade-management/trades?include_closed=false", { signal });
-    if (!isRecord(payload) || !Array.isArray(payload.trades)) throw new Error("Invalid active-trades response");
-    return payload.trades.map(mapTrade);
+    return (await sharedTradesJournal(signal)).activeTrades;
   },
 
   async getJournal(signal?: AbortSignal): Promise<JournalTrade[]> {
-    const payload = await apiClient.get<unknown>("/api/v1/journal-performance/journal", { signal });
-    if (!isRecord(payload) || !Array.isArray(payload.entries)) throw new Error("Invalid journal response");
-    return payload.entries.map(mapJournal);
+    return (await sharedTradesJournal(signal)).journalTrades;
   },
 
   async closeTrade(tradeId: string, reason = "MANUAL_CLOSE"): Promise<void> {
