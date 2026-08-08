@@ -23,7 +23,7 @@ from app.services.scanner_contract import (
 D0 = Decimal("0")
 D1 = Decimal("1")
 D100 = Decimal("100")
-_REQUIRED_DEPTH = {"1h": 4, "15m": 24, "5m": 3}
+_REQUIRED_DEPTH = {"1h": 4, "15m": 4, "5m": 24, "3m": 3, "1m": 3}
 
 
 @dataclass(frozen=True)
@@ -62,6 +62,8 @@ class EvaluationContext:
     exchange_time: datetime
     counts: dict[str, int]
     freshness: dict[str, Decimal]
+    e_alt: list[Frame] | None = None
+    entry_interval: str = "5m"
 
 
 class ScannerEvaluationError(Exception):
@@ -212,7 +214,7 @@ def _candidate_key(
     reference_close_time: datetime,
 ) -> str:
     timestamp = reference_close_time.astimezone(UTC).isoformat()
-    raw = f"{symbol.upper()}|{direction.value}|{setup.value}|15m|{timestamp}"
+    raw = f"{symbol.upper()}|{direction.value}|{setup.value}|5m|{timestamp}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -241,7 +243,7 @@ class ScannerEngineBase:
         exchange_time: datetime,
     ) -> tuple[list[Frame], Decimal]:
         interval = candles.interval
-        label = {"1h": "1H", "15m": "15M", "5m": "5M"}[interval]
+        label = {"1h": "1H", "15m": "15M", "5m": "5M", "3m": "3M", "1m": "1M"}[interval]
         if not candles.candles:
             raise ScannerEvaluationError(
                 f"MISSING_{label}_CANDLES", f"{interval} candles are unavailable", interval
@@ -347,10 +349,12 @@ class ScannerEngineBase:
         return frames, _clamp(D1 - (seconds / maximum))
 
     @staticmethod
-    def regime(h: list[Frame], structure_state: str) -> ScannerDirection:
+    def regime(
+        h: list[Frame], structure_state: str, timeframe: str = "1h"
+    ) -> ScannerDirection:
         if structure_state == "insufficient_data":
             raise ScannerEvaluationError(
-                "STRUCTURE_INSUFFICIENT", "1H market structure is unavailable", "1h"
+                "STRUCTURE_INSUFFICIENT", f"{timeframe} market structure is unavailable", timeframe
             )
         h0, h3 = h[0], h[3]
         atr = _frame_value(h0, "atr14")
@@ -370,7 +374,7 @@ class ScannerEngineBase:
             )
         )
         if sideways:
-            raise ScannerEvaluationError("TREND_SIDEWAYS", "1H regime is SIDEWAYS", "1h")
+            raise ScannerEvaluationError("TREND_SIDEWAYS", f"{timeframe} regime is SIDEWAYS", timeframe)
         bullish = (
             h0.candle.close > ema20 > ema50 > ema200
             and ema20 > _frame_value(h3, "ema20")
@@ -395,7 +399,7 @@ class ScannerEngineBase:
             return ScannerDirection.LONG
         if bearish:
             return ScannerDirection.SHORT
-        raise ScannerEvaluationError("TREND_MIXED", "1H regime is MIXED", "1h")
+        raise ScannerEvaluationError("TREND_MIXED", f"{timeframe} regime is MIXED", timeframe)
 
     @staticmethod
     def selected_ema(s0: Frame, direction: ScannerDirection) -> Decimal:
