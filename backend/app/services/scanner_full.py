@@ -212,7 +212,10 @@ class ScannerFullService(ScannerRuntimeBase):
                     terminal_at = self._terminal_history.get(
                         (candidate.symbol, candidate.direction, candidate.setup)
                     )
-                    if terminal_at is not None and exchange_time < terminal_at + REENTRY_COOLDOWN:
+                    if (
+                        terminal_at is not None
+                        and exchange_time < terminal_at + REENTRY_COOLDOWN
+                    ):
                         audits.append(
                             ScannerAuditRecord(
                                 code="REENTRY_COOLDOWN_ACTIVE",
@@ -292,7 +295,9 @@ class ScannerFullService(ScannerRuntimeBase):
             if self._state is ScannerState.ON:
                 self._next_full_scan_at = run.run_started_at + FULL_SCAN_INTERVAL
                 if self._next_refresh_at is None:
-                    self._next_refresh_at = next_five_minute_boundary(run.run_started_at)
+                    self._next_refresh_at = next_five_minute_boundary(
+                        run.run_started_at
+                    )
 
     def _complete_run(self, run: ScannerRunSummary) -> ScannerRunSummary:
         run.completed_at = self._clock.now()
@@ -329,8 +334,16 @@ class ScannerFullService(ScannerRuntimeBase):
             e=frames["3m"],
             universe=universe,
             exchange_time=exchange_time,
-            counts={"1h": counts["15m"], "15m": counts["5m"], "5m": min(counts["3m"], counts["1m"])},
-            freshness={"1h": freshness["15m"], "15m": freshness["5m"], "5m": min(freshness["3m"], freshness["1m"])},
+            counts={
+                "1h": counts["15m"],
+                "15m": counts["5m"],
+                "5m": min(counts["3m"], counts["1m"]),
+            },
+            freshness={
+                "1h": freshness["15m"],
+                "15m": freshness["5m"],
+                "5m": min(freshness["3m"], freshness["1m"]),
+            },
             fast_e=frames["1m"],
         )
 
@@ -395,12 +408,21 @@ class ScannerFullService(ScannerRuntimeBase):
         match: SetupMatch,
         run_id: str,
     ) -> ScannerCandidate:
+        fast_entry_ready = context.fast_e is not None and self._engine.shared_entry(
+            context.fast_e,
+            context.direction,
+            match.entry_trigger_price,
+        )
         entry_ready = (
             context.e[0].candle.close_time > match.setup_confirmed_at
             and context.exchange_time < match.expires_at
             and (
-                self._engine.shared_entry(context.e, context.direction, match.entry_trigger_price)
-                or (context.fast_e is not None and self._engine.shared_entry(context.fast_e, context.direction, match.entry_trigger_price))
+                self._engine.shared_entry(
+                    context.e,
+                    context.direction,
+                    match.entry_trigger_price,
+                )
+                or fast_entry_ready
             )
         )
         score, confidence, grade, components = self._engine.score(
