@@ -2,10 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useTrading } from "../store/TradingStore";
 import { AppSettings } from "../types";
 import { backendService } from "../services/backendService";
-import {
-  DemoManualTestTradeResult,
-  demoExecutionService,
-} from "../services/demoExecutionService";
+import { demoExecutionService } from "../services/demoExecutionService";
+import type { DemoManualTestTradeResult } from "../services/demoExecutionService";
 import {
   Globe,
   Sliders,
@@ -332,7 +330,7 @@ export const Settings: React.FC = () => {
                   <div>
                     <span className="text-orange-400 font-bold block">Manual Binance Demo Test Trade</span>
                     <span className="text-[10px] text-zinc-500">
-                      Opens BTCUSDT LONG on Binance Demo/Testnet using the smallest exchange-valid MARKET quantity. This bypasses scanner/signal selection only; it never targets a live Binance host.
+                      Opens BTCUSDT LONG on Binance Demo/Testnet using the smallest exchange-valid MARKET quantity. This bypasses scanner/signal selection only; it never targets a live Binance host. The test position remains open until you close it on Demo/Testnet.
                     </span>
                   </div>
                   <button
@@ -408,7 +406,7 @@ export const Settings: React.FC = () => {
                 <div className="bg-zinc-950 p-2.5 rounded border border-zinc-850 leading-relaxed text-zinc-400 text-[11px]"><span className="text-rose-500 font-bold">CRITICAL DEVIATION BLOCK:</span> The Risk Engine is a hardened system module and cannot be disabled. Standard risk ceilings protect perpetual accounts from liquidations during systemic market black swans.</div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div><label className="block text-zinc-400 mb-1 uppercase font-bold text-[10px]">Risk Per Trade (%):</label><input type="number" value={editableSettings.risk.riskPerTradePercent} onChange={(e) => updateField("risk", "riskPerTradePercent", parseFloat(e.target.value) || 1.0)} step="0.1" className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-white" /></div>
-                  <div><label className="block text-zinc-400 mb-1 uppercase font-bold text-[10px]">Daily Loss Limit (%):</label><input type="number" value={editableSettings.risk.dailyLossLimitPercent} onChange={(e) => updateField("risk", "risk.dailyLossLimitPercent", parseFloat(e.target.value) || 3.0)} step="0.5" className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-white" /></div>
+                  <div><label className="block text-zinc-400 mb-1 uppercase font-bold text-[10px]">Daily Loss Limit (%):</label><input type="number" value={editableSettings.risk.dailyLossLimitPercent} onChange={(e) => updateField("risk", "dailyLossLimitPercent", parseFloat(e.target.value) || 3.0)} step="0.5" className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-white" /></div>
                   <div><label className="block text-zinc-400 mb-1 uppercase font-bold text-[10px]">Daily Profit Lock (%):</label><input type="number" value={editableSettings.risk.dailyProfitLockPercent} onChange={(e) => updateField("risk", "dailyProfitLockPercent", parseFloat(e.target.value) || 5.0)} step="0.5" className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-white" /></div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
