@@ -149,7 +149,7 @@ def test_full_scan_stale_universe_and_symbol_failure_classification() -> None:
             exchange_time: Any,
             run_id: str,
         ) -> tuple[Any, list[Any], EvaluationContext]:
-            raise ScannerEvaluationError("TREND_SIDEWAYS", "range", "1h")
+            raise ScannerEvaluationError("TREND_SIDEWAYS", "range", "15m")
 
         non_data._evaluate_symbol = MethodType(reject_trend, non_data)  # type: ignore[method-assign]
         non_data_run = await non_data.run_now()
@@ -394,7 +394,7 @@ def test_runtime_clock_boundary_and_abstract_operations() -> None:
         await clock.sleep(0)
 
         boundary = next_five_minute_boundary(NOW + timedelta(minutes=2, seconds=30))
-        assert boundary == NOW + timedelta(minutes=5)
+        assert boundary == NOW + timedelta(minutes=3)
 
         runtime = ScannerRuntimeBase(
             FakeMarket(), FakeUniverse(), FakeIndicators(), clock=FakeClock()  # type: ignore[arg-type]
