@@ -13,10 +13,10 @@ SCANNER_TERMINAL_HISTORY_LIMIT = 1000
 MIN_CLOSED_CANDLES = 200
 CONFIDENCE_COMPLETENESS_FULL_COUNT = 250
 
-FULL_SCAN_INTERVAL = timedelta(hours=4)
-ACTIVE_REFRESH_INTERVAL = timedelta(minutes=5)
-REENTRY_COOLDOWN = timedelta(minutes=45)
-QUALIFICATION_EXPIRY = timedelta(minutes=15)
+FULL_SCAN_INTERVAL = timedelta(minutes=15)
+ACTIVE_REFRESH_INTERVAL = timedelta(minutes=1)
+REENTRY_COOLDOWN = timedelta(minutes=15)
+QUALIFICATION_EXPIRY = timedelta(minutes=5)
 MAX_CLOCK_SKEW = timedelta(seconds=5)
 FUTURE_CANDLE_TOLERANCE = timedelta(seconds=2)
 UNIVERSE_MAX_AGE = timedelta(seconds=60)
@@ -24,11 +24,15 @@ TIMEFRAME_MAX_AGE = {
     "1h": timedelta(minutes=75),
     "15m": timedelta(minutes=22, seconds=30),
     "5m": timedelta(minutes=7, seconds=30),
+    "3m": timedelta(minutes=4, seconds=30),
+    "1m": timedelta(minutes=1, seconds=30),
 }
 TIMEFRAME_INTERVAL = {
     "1h": timedelta(hours=1),
     "15m": timedelta(minutes=15),
     "5m": timedelta(minutes=5),
+    "3m": timedelta(minutes=3),
+    "1m": timedelta(minutes=1),
 }
 
 SETUP_IDS = (
@@ -46,11 +50,11 @@ SETUP_NAMES = {
     "continuation_setup": "Continuation Setup",
 }
 SETUP_EXPIRY = {
-    "trend_pullback": timedelta(minutes=60),
-    "breakout_retest": timedelta(minutes=120),
-    "ema_rejection": timedelta(minutes=45),
-    "liquidity_sweep_reversal": timedelta(minutes=45),
-    "continuation_setup": timedelta(minutes=45),
+    "trend_pullback": timedelta(minutes=20),
+    "breakout_retest": timedelta(minutes=40),
+    "ema_rejection": timedelta(minutes=15),
+    "liquidity_sweep_reversal": timedelta(minutes=15),
+    "continuation_setup": timedelta(minutes=15),
 }
 SETUP_MIN_VOLUME_RATIO = {
     "trend_pullback": Decimal("0.80"),
@@ -88,6 +92,8 @@ CONFIDENCE_WEIGHTS = {
 VOLATILITY_LIMITS = {
     "15m": (Decimal("0.0015"), Decimal("0.025")),
     "5m": (Decimal("0.0005"), Decimal("0.015")),
+    "3m": (Decimal("0.0003"), Decimal("0.012")),
+    "1m": (Decimal("0.0001"), Decimal("0.010")),
 }
 
 REJECTION_CODES = frozenset(
@@ -101,15 +107,23 @@ REJECTION_CODES = frozenset(
         "MISSING_1H_CANDLES",
         "MISSING_15M_CANDLES",
         "MISSING_5M_CANDLES",
+        "MISSING_1M_CANDLES",
+        "MISSING_3M_CANDLES",
         "INSUFFICIENT_1H_HISTORY",
         "INSUFFICIENT_15M_HISTORY",
         "INSUFFICIENT_5M_HISTORY",
+        "INSUFFICIENT_1M_HISTORY",
+        "INSUFFICIENT_3M_HISTORY",
         "STALE_1H_DATA",
         "STALE_15M_DATA",
         "STALE_5M_DATA",
+        "STALE_1M_DATA",
+        "STALE_3M_DATA",
         "INVALID_1H_OHLCV",
         "INVALID_15M_OHLCV",
         "INVALID_5M_OHLCV",
+        "INVALID_1M_OHLCV",
+        "INVALID_3M_OHLCV",
         "MISSING_REQUIRED_INDICATOR",
         "INDICATOR_CALCULATION_FAILED",
         "STRUCTURE_INSUFFICIENT",
