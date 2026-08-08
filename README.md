@@ -9,6 +9,8 @@ AstraForge is packaged as one repository with two deployable services:
 ## Current project status
 
 **Date:** 08 August 2026  
+**Day:** Saturday  
+**Time:** 09:10 PM (UTC+06:00)  
 **Environment:** Render production deployment  
 **Mode:** Binance Demo only
 
@@ -28,13 +30,32 @@ AstraForge is packaged as one repository with two deployable services:
 - Scanner & Signals **Phase 4 — Cross-Link Scanner ↔ Signal** merged in PR #24; CI Run #75 passed.
 - Scanner & Signals **Phase 5 — UI Consolidation** merged in PR #25; CI Run #77 passed.
 - Scanner & Signals **Phase 6 — QA & Validation** merged in PR #26; final CI Run #81 passed.
-- Remediation **#7 — Scan Now 15s timeout** merged in PR #28; CI Run #87 passed. Normal requests remain 15s while manual full scans have a dedicated 120s request budget and server-duration diagnostics.
+- Remediation **#7 — Scan Now 15s timeout** merged in PR #28 / CI Run #87. Normal requests remain 15s while manual full scans have a dedicated 120s request budget and server-duration diagnostics.
 
 ### Current validation focus
 
 **Scanner & Signals roadmap is COMPLETE (6/6).** The merged page is backend-authoritative, preserves the full scanner universe, links scanner candidates to real Signal Engine records, uses a desktop 50/50 layout, and has passed final backend + frontend CI regression validation.
 
 **Trades & Journal #8 — UI/Data consolidation is IN PROGRESS.** The target is one user-facing Trades & Journal page backed by one combined backend snapshot while preserving the existing Active Trades and Journal internal compatibility paths.
+
+## 08 August 2026 — Engine workflow audit roadmap
+
+Today's locked audit order is:
+
+1. **Market Data Audit** — verify live feed, candles, symbol universe, stale/missing data and backend market-data contract.
+2. **Scanner Audit** — verify full 50-symbol evaluation and determine exact causes of rejected/failed candidates.
+3. **Strategy Audit** — trace 1H trend → 15M setup → 5M entry logic against actual code and scanner output.
+4. **Risk Audit** — verify how qualified candidates enter risk evaluation and which rules block or approve them.
+5. **Signal Audit** — verify how risk-qualified candidates become backend Signal Engine records/cards and why signals may be absent.
+6. **End-to-End Verification** — verify `Market Data → Scanner → Strategy → Risk → Signal` using code plus live output.
+7. **Issue Report** — document exact bug, file/function, evidence and fix plan before changing logic.
+
+### Audit rule
+
+- Audit first; fix second.
+- Do not guess from UI or README when code verification is possible.
+- Do not change scanner formulas, strategy thresholds, risk rules or signal logic unless a concrete bug is verified.
+- Any fix must be tied to an exact file/function and reproducible evidence.
 
 ## Locked Scanner & Signals layout
 
