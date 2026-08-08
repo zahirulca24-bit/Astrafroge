@@ -28,10 +28,13 @@ AstraForge is packaged as one repository with two deployable services:
 - Scanner & Signals **Phase 4 — Cross-Link Scanner ↔ Signal** merged in PR #24; CI Run #75 passed.
 - Scanner & Signals **Phase 5 — UI Consolidation** merged in PR #25; CI Run #77 passed.
 - Scanner & Signals **Phase 6 — QA & Validation** merged in PR #26; final CI Run #81 passed.
+- Remediation **#7 — Scan Now 15s timeout** merged in PR #28; CI Run #87 passed. Normal requests remain 15s while manual full scans have a dedicated 120s request budget and server-duration diagnostics.
 
 ### Current validation focus
 
 **Scanner & Signals roadmap is COMPLETE (6/6).** The merged page is backend-authoritative, preserves the full scanner universe, links scanner candidates to real Signal Engine records, uses a desktop 50/50 layout, and has passed final backend + frontend CI regression validation.
+
+**Trades & Journal #8 — UI/Data consolidation is IN PROGRESS.** The target is one user-facing Trades & Journal page backed by one combined backend snapshot while preserving the existing Active Trades and Journal internal compatibility paths.
 
 ## Locked Scanner & Signals layout
 
@@ -108,6 +111,20 @@ Mobile/tablet stack responsively; desktop remains side-by-side 50/50.
 - No fake/local-derived signals or relationships are created.
 - Invalid/unavailable backend scanner contracts fail closed rather than fabricating data.
 - Full backend + frontend CI regression suite passed in final CI Run #81 before merge.
+
+## Current remediation roadmap
+
+1. ✅ Scanner & Signals merge and six-phase QA — COMPLETE.
+2. ✅ #7 Scan Now timeout — COMPLETE in PR #28 / CI Run #87.
+3. 🚧 #8 Merge Active Trades + Journal — IN PROGRESS.
+4. ⏳ #9 Default Trades & Journal view: Today Active + Today Closed.
+5. ⏳ #10 Older closed trades → Journal History.
+6. ⏳ #11 Closed trade Close Reason mandatory.
+7. ⏳ #12 SL Hit → evidence-backed Why SL Hit.
+8. ⏳ #13 Add Backtest page.
+9. ⏳ #14 Backtest immediately before Settings.
+10. ⏳ #15 Final navigation cleanup.
+11. ⏳ #16 End-to-end regression + deployed verification.
 
 ## Locked navigation target
 
