@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
 from uuid import uuid4
@@ -91,19 +92,20 @@ class ScannerService(ScannerFullService):
                 run.evaluated_symbols = len(active)
                 for candidate in active:
                     try:
-                        current_h, current_s, current_e, counts, freshness, structure = (
+                        current_h, current_s, current_e, current_e_alt, counts, freshness, structure = (
                             await self._load_refresh_inputs(candidate.symbol, exchange_time)
                         )
-                        current_direction = self._engine.regime(current_h, structure)
+                        current_direction = self._engine.regime(current_h, structure, "15m")
                         if current_direction is not candidate.direction:
                             raise ScannerEvaluationError(
                                 "TREND_DIRECTION_MISMATCH",
-                                "Current 1H regime conflicts with candidate direction",
-                                "1h",
+                                "Current 15M trend conflicts with candidate direction",
+                                "15m",
                             )
-                        self._engine.volatility(current_s[0], "15m")
-                        self._engine.volatility(current_e[0], "5m")
-                        if self._engine.invalidated(candidate, current_s[0], current_e[0]):
+                        self._engine.volatility(current_s[0], "5m")
+                        preferred_entry = str(candidate.evidence.get("entry_interval", "1m"))
+                        invalidation_entry = current_e_alt if preferred_entry == "3m" else current_e
+                        if self._engine.invalidated(candidate, current_s[0], invalidation_entry[0]):
                             self._terminal(
                                 candidate,
                                 CandidateLifecycle.INVALIDATED,
@@ -149,22 +151,37 @@ class ScannerService(ScannerFullService):
                             exchange_time=exchange_time,
                             counts=counts,
                             freshness=freshness,
+                            e_alt=current_e_alt,
+                            entry_interval="1m",
                         )
                         match = self._stored_match(candidate)
-                        entry_ready = (
-                            current_e[0].candle.close_time > candidate.setup_confirmed_at
-                            and exchange_time < candidate.expires_at
-                            and self._engine.shared_entry(
-                                current_e,
-                                candidate.direction,
-                                candidate.entry_trigger_price,
-                            )
-                        )
+                        entry_context = context
+                        entry_ready = False
+                        preferred = str(candidate.evidence.get("entry_interval", "1m"))
+                        choices = [("1m", current_e), ("3m", current_e_alt)]
+                        choices.sort(key=lambda item: item[0] != preferred)
+                        for interval, frames in choices:
+                            if (
+                                len(frames) >= 2
+                                and frames[0].candle.close_time > candidate.setup_confirmed_at
+                                and exchange_time < candidate.expires_at
+                                and self._engine.shared_entry(
+                                    frames,
+                                    candidate.direction,
+                                    candidate.entry_trigger_price,
+                                )
+                            ):
+                                entry_context = replace(
+                                    context, e=frames, entry_interval=interval
+                                )
+                                entry_ready = True
+                                break
                         score, confidence, grade, components = self._engine.score(
-                            context,
+                            entry_context,
                             match,
                             entry_ready,
                         )
+                        candidate.evidence["entry_interval"] = entry_context.entry_interval
                         candidate.score = score
                         candidate.confidence = confidence
                         candidate.grade = grade
@@ -195,12 +212,12 @@ class ScannerService(ScannerFullService):
                         ):
                             candidate.lifecycle = CandidateLifecycle.QUALIFIED
                             candidate.qualification_expires_at = (
-                                current_e[0].candle.close_time + QUALIFICATION_EXPIRY
+                                entry_context.e[0].candle.close_time + QUALIFICATION_EXPIRY
                             )
                             run.qualified_candidates += 1
                         else:
                             candidate.lifecycle = CandidateLifecycle.WATCH_NEAR
-                            self._set_watch_reasons(candidate, current_e[0])
+                            self._set_watch_reasons(candidate, entry_context.e[0])
                         run.successful_symbols += 1
                         run.updated_candidates += 1
                     except ScannerEvaluationError as exc:
@@ -290,6 +307,7 @@ class ScannerService(ScannerFullService):
         list[Frame],
         list[Frame],
         list[Frame],
+        list[Frame],
         dict[str, int],
         dict[str, Decimal],
         str,
@@ -298,7 +316,7 @@ class ScannerService(ScannerFullService):
         counts: dict[str, int] = {}
         freshness: dict[str, Decimal] = {}
         structure = "insufficient_data"
-        for interval in ("1h", "15m", "5m"):
+        for interval in ("15m", "5m", "1m", "3m"):
             candles = await self._market.candles(symbol, interval, 250)
             indicators = await self._indicators.build(symbol, interval, 250)
             aligned, ratio = self._engine.align(
@@ -309,12 +327,13 @@ class ScannerService(ScannerFullService):
             frames[interval] = aligned
             counts[interval] = min(len(candles.candles), len(indicators.points))
             freshness[interval] = ratio
-            if interval == "1h":
+            if interval == "15m":
                 structure = indicators.structure.state
         return (
-            frames["1h"],
             frames["15m"],
             frames["5m"],
+            frames["1m"],
+            frames["3m"],
             counts,
             freshness,
             structure,
