@@ -91,8 +91,17 @@ class ScannerService(ScannerFullService):
                 run.evaluated_symbols = len(active)
                 for candidate in active:
                     try:
-                        current_h, current_s, current_e, current_fast_e, counts, freshness, structure = (
-                            await self._load_refresh_inputs(candidate.symbol, exchange_time)
+                        (
+                            current_h,
+                            current_s,
+                            current_e,
+                            current_fast_e,
+                            counts,
+                            freshness,
+                            structure,
+                        ) = await self._load_refresh_inputs(
+                            candidate.symbol,
+                            exchange_time,
                         )
                         current_direction = self._engine.regime(current_h, structure)
                         if current_direction is not candidate.direction:
@@ -157,8 +166,16 @@ class ScannerService(ScannerFullService):
                             current_e[0].candle.close_time > candidate.setup_confirmed_at
                             and exchange_time < candidate.expires_at
                             and (
-                                self._engine.shared_entry(current_e, candidate.direction, candidate.entry_trigger_price)
-                                or self._engine.shared_entry(current_fast_e, candidate.direction, candidate.entry_trigger_price)
+                                self._engine.shared_entry(
+                                    current_e,
+                                    candidate.direction,
+                                    candidate.entry_trigger_price,
+                                )
+                                or self._engine.shared_entry(
+                                    current_fast_e,
+                                    candidate.direction,
+                                    candidate.entry_trigger_price,
+                                )
                             )
                         )
                         score, confidence, grade, components = self._engine.score(
@@ -318,8 +335,16 @@ class ScannerService(ScannerFullService):
             frames["5m"],
             frames["3m"],
             frames["1m"],
-            {"1h": counts["15m"], "15m": counts["5m"], "5m": min(counts["3m"], counts["1m"])},
-            {"1h": freshness["15m"], "15m": freshness["5m"], "5m": min(freshness["3m"], freshness["1m"])},
+            {
+                "1h": counts["15m"],
+                "15m": counts["5m"],
+                "5m": min(counts["3m"], counts["1m"]),
+            },
+            {
+                "1h": freshness["15m"],
+                "15m": freshness["5m"],
+                "5m": min(freshness["3m"], freshness["1m"]),
+            },
             structure,
         )
 
