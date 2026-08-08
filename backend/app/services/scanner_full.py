@@ -11,6 +11,7 @@ from app.schemas.scanner import (
     CandidateLifecycle,
     ScannerAuditRecord,
     ScannerCandidate,
+    ScannerDirection,
     ScannerGrade,
     ScannerRunStatus,
     ScannerRunSummary,
@@ -212,10 +213,7 @@ class ScannerFullService(ScannerRuntimeBase):
                     terminal_at = self._terminal_history.get(
                         (candidate.symbol, candidate.direction, candidate.setup)
                     )
-                    if (
-                        terminal_at is not None
-                        and exchange_time < terminal_at + REENTRY_COOLDOWN
-                    ):
+                    if terminal_at is not None and exchange_time < terminal_at + REENTRY_COOLDOWN:
                         audits.append(
                             ScannerAuditRecord(
                                 code="REENTRY_COOLDOWN_ACTIVE",
@@ -295,22 +293,19 @@ class ScannerFullService(ScannerRuntimeBase):
             if self._state is ScannerState.ON:
                 self._next_full_scan_at = run.run_started_at + FULL_SCAN_INTERVAL
                 if self._next_refresh_at is None:
-                    self._next_refresh_at = next_five_minute_boundary(
-                        run.run_started_at
-                    )
+                    self._next_refresh_at = next_five_minute_boundary(run.run_started_at)
 
     def _complete_run(self, run: ScannerRunSummary) -> ScannerRunSummary:
         run.completed_at = self._clock.now()
         self._append_run(run)
         return run
 
-    async def _load_context(
+    async def _load_contexts(
         self, universe: UniverseCandidate, exchange_time: datetime
-    ) -> EvaluationContext:
+    ) -> tuple[EvaluationContext, EvaluationContext]:
         frames: dict[str, list[Frame]] = {}
         freshness: dict[str, Decimal] = {}
         counts: dict[str, int] = {}
-        structures: dict[str, str] = {}
         for interval in ("15m", "5m", "3m", "1m"):
             candles = await self._market.candles(universe.symbol, interval, 250)
             indicators = await self._indicators.build(universe.symbol, interval, 250)
@@ -322,29 +317,30 @@ class ScannerFullService(ScannerRuntimeBase):
             frames[interval] = aligned
             freshness[interval] = freshness_ratio
             counts[interval] = min(len(candles.candles), len(indicators.points))
-            structures[interval] = indicators.structure.state
-        direction = self._engine.regime(frames["15m"], structures["15m"])
         self._engine.volatility(frames["5m"][0], "5m")
         self._engine.volatility(frames["3m"][0], "3m")
         self._engine.volatility(frames["1m"][0], "1m")
-        return EvaluationContext(
-            direction=direction,
-            h=frames["15m"],
-            s=frames["5m"],
-            e=frames["3m"],
-            universe=universe,
-            exchange_time=exchange_time,
-            counts={
+        shared = {
+            "h": frames["15m"],
+            "s": frames["5m"],
+            "e": frames["3m"],
+            "universe": universe,
+            "exchange_time": exchange_time,
+            "counts": {
                 "1h": counts["15m"],
                 "15m": counts["5m"],
                 "5m": min(counts["3m"], counts["1m"]),
             },
-            freshness={
+            "freshness": {
                 "1h": freshness["15m"],
                 "15m": freshness["5m"],
                 "5m": min(freshness["3m"], freshness["1m"]),
             },
-            fast_e=frames["1m"],
+            "fast_e": frames["1m"],
+        }
+        return (
+            EvaluationContext(direction=ScannerDirection.LONG, **shared),
+            EvaluationContext(direction=ScannerDirection.SHORT, **shared),
         )
 
     async def _evaluate_symbol(
@@ -357,38 +353,42 @@ class ScannerFullService(ScannerRuntimeBase):
         list[ScannerAuditRecord],
         EvaluationContext | None,
     ]:
-        context = await self._load_context(universe, exchange_time)
-        matches, setup_failures = self._engine.evaluate_setups(context)
-        audits = [
-            ScannerAuditRecord(
-                code=failure.code,
-                detail=failure.detail,
-                symbol=universe.symbol,
-                universe_rank=universe.rank,
-                direction=context.direction,
-                timeframe=failure.timeframe or "5m",
-            )
-            for failure in setup_failures
-        ]
-        if not matches:
-            audits.append(
+        contexts = await self._load_contexts(universe, exchange_time)
+        audits: list[ScannerAuditRecord] = []
+        candidates: list[tuple[ScannerCandidate, EvaluationContext]] = []
+        for context in contexts:
+            matches, setup_failures = self._engine.evaluate_setups(context)
+            audits.extend(
                 ScannerAuditRecord(
-                    code="SETUP_NOT_DETECTED",
-                    detail="No approved deterministic setup matched",
+                    code=failure.code,
+                    detail=failure.detail,
                     symbol=universe.symbol,
                     universe_rank=universe.rank,
                     direction=context.direction,
+                    timeframe=failure.timeframe or "5m",
+                )
+                for failure in setup_failures
+            )
+            candidates.extend(
+                (self._candidate_from_match(context, match, run_id), context)
+                for match in matches
+            )
+
+        if not candidates:
+            audits.append(
+                ScannerAuditRecord(
+                    code="SETUP_NOT_DETECTED",
+                    detail="No approved 5M setup matched in either direction",
+                    symbol=universe.symbol,
+                    universe_rank=universe.rank,
                     timeframe="5m",
                 )
             )
-            return None, audits, context
+            return None, audits, None
 
-        candidates = [
-            self._candidate_from_match(context, match, run_id) for match in matches
-        ]
-        candidates.sort(key=_candidate_order)
-        selected = candidates[0]
-        for item in candidates[1:]:
+        candidates.sort(key=lambda item: _candidate_order(item[0]))
+        selected, selected_context = candidates[0]
+        for item, _ in candidates[1:]:
             audits.append(
                 ScannerAuditRecord(
                     code="SUPERSEDED_BY_HIGHER_RANKED_SETUP",
@@ -400,7 +400,7 @@ class ScannerFullService(ScannerRuntimeBase):
                     reference_time=item.reference_close_time,
                 )
             )
-        return selected, audits, context
+        return selected, audits, selected_context
 
     def _candidate_from_match(
         self,
@@ -408,21 +408,19 @@ class ScannerFullService(ScannerRuntimeBase):
         match: SetupMatch,
         run_id: str,
     ) -> ScannerCandidate:
-        fast_entry_ready = context.fast_e is not None and self._engine.shared_entry(
-            context.fast_e,
-            context.direction,
-            match.entry_trigger_price,
-        )
         entry_ready = (
             context.e[0].candle.close_time > match.setup_confirmed_at
             and context.exchange_time < match.expires_at
             and (
-                self._engine.shared_entry(
-                    context.e,
-                    context.direction,
-                    match.entry_trigger_price,
+                self._engine.shared_entry(context.e, context.direction, match.entry_trigger_price)
+                or (
+                    context.fast_e is not None
+                    and self._engine.shared_entry(
+                        context.fast_e,
+                        context.direction,
+                        match.entry_trigger_price,
+                    )
                 )
-                or fast_entry_ready
             )
         )
         score, confidence, grade, components = self._engine.score(
