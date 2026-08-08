@@ -5,8 +5,7 @@ import { AppSidebar, AppHeader } from "./components/SharedComponents";
 const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
 const ScannerSignals = lazy(() => import("./pages/ScannerSignals").then((m) => ({ default: m.ScannerSignals })));
 const ChartPage = lazy(() => import("./pages/ChartPage").then((m) => ({ default: m.ChartPage })));
-const ActiveTrades = lazy(() => import("./pages/ActiveTrades").then((m) => ({ default: m.ActiveTrades })));
-const Journal = lazy(() => import("./pages/Journal").then((m) => ({ default: m.Journal })));
+const TradesJournal = lazy(() => import("./pages/TradesJournal").then((m) => ({ default: m.TradesJournal })));
 const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
 
 function PageLoader() {
@@ -23,6 +22,7 @@ function PageLoader() {
 function AppContent() {
   const { currentPage, tradingRecordsLoading, tradingRecordsError } = useTrading();
   const isScannerSignals = currentPage === "Scanner" || currentPage === "Signals";
+  const isTradesJournal = currentPage === "Active Trades" || currentPage === "Journal";
 
   const renderPage = () => {
     switch (currentPage) {
@@ -34,9 +34,8 @@ function AppContent() {
       case "Chart & Watchlist":
         return <ChartPage />;
       case "Active Trades":
-        return <ActiveTrades />;
       case "Journal":
-        return <Journal />;
+        return <TradesJournal />;
       case "Settings":
         return <Settings />;
       default:
@@ -44,16 +43,21 @@ function AppContent() {
     }
   };
 
-  const displayPage = isScannerSignals ? "Scanner & Signals" : currentPage;
+  const displayPage = isScannerSignals ? "Scanner & Signals" : isTradesJournal ? "Trades & Journal" : currentPage;
 
   return (
-    <div className={`phase5-navigation flex flex-col md:flex-row h-screen w-screen overflow-hidden bg-black text-zinc-100 font-sans ${isScannerSignals ? "scanner-signals-active" : ""}`}>
+    <div className={`phase5-navigation flex flex-col md:flex-row h-screen w-screen overflow-hidden bg-black text-zinc-100 font-sans ${isScannerSignals ? "scanner-signals-active" : ""} ${isTradesJournal ? "trades-journal-active" : ""}`}>
       <style>{`
         .phase5-navigation nav > button:nth-child(3) { display: none; }
         .phase5-navigation nav > button:nth-child(2) > span { font-size: 0; }
         .phase5-navigation nav > button:nth-child(2) > span::after { content: "Scanner & Signals"; font-size: 0.75rem; }
-        .scanner-signals-active header h1 { font-size: 0; }
+        .phase5-navigation nav > button:nth-child(6) { display: none; }
+        .phase5-navigation nav > button:nth-child(5) > span { font-size: 0; }
+        .phase5-navigation nav > button:nth-child(5) > span::after { content: "Trades & Journal"; font-size: 0.75rem; }
+        .scanner-signals-active header h1,
+        .trades-journal-active header h1 { font-size: 0; }
         .scanner-signals-active header h1::after { content: "Scanner & Signals"; font-size: 0.875rem; }
+        .trades-journal-active header h1::after { content: "Trades & Journal"; font-size: 0.875rem; }
       `}</style>
       <AppSidebar />
       <div className="flex flex-col flex-1 h-full overflow-hidden">
@@ -66,7 +70,7 @@ function AppContent() {
                 Backend trading records failed: {tradingRecordsError}
               </div>
             )}
-            {tradingRecordsLoading && (currentPage === "Active Trades" || currentPage === "Journal") && (
+            {tradingRecordsLoading && isTradesJournal && (
               <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-[11px] text-zinc-400">
                 Loading backend-authoritative trading records…
               </div>
