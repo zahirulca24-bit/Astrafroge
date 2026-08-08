@@ -3,6 +3,10 @@ import { useTrading } from "../store/TradingStore";
 import { AppSettings } from "../types";
 import { backendService } from "../services/backendService";
 import {
+  DemoManualTestTradeResult,
+  demoExecutionService,
+} from "../services/demoExecutionService";
+import {
   Globe,
   Sliders,
   ShieldCheck,
@@ -36,6 +40,7 @@ export const Settings: React.FC = () => {
     mutationBanner,
     loginOperatorSession,
     logoutOperatorSession,
+    protectedControlsEnabled,
     protectedControlsReason,
     clearMutationBanner,
   } = useTrading();
@@ -44,6 +49,9 @@ export const Settings: React.FC = () => {
   const [backendStatus, setBackendStatus] = useState<string>("Not connected");
   const [operatorTokenInput, setOperatorTokenInput] = useState("");
   const [operatorLoginBusy, setOperatorLoginBusy] = useState(false);
+  const [manualTestBusy, setManualTestBusy] = useState(false);
+  const [manualTestResult, setManualTestResult] = useState<DemoManualTestTradeResult | null>(null);
+  const [manualTestError, setManualTestError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -128,6 +136,21 @@ export const Settings: React.FC = () => {
       setOperatorTokenInput("");
     } finally {
       setOperatorLoginBusy(false);
+    }
+  };
+
+  const openManualDemoTestTrade = async () => {
+    setManualTestBusy(true);
+    setManualTestError(null);
+    setManualTestResult(null);
+    try {
+      setManualTestResult(await demoExecutionService.openManualTestTrade());
+    } catch (error) {
+      setManualTestError(
+        error instanceof Error ? error.message : "Manual Binance Demo test trade failed.",
+      );
+    } finally {
+      setManualTestBusy(false);
     }
   };
 
@@ -304,6 +327,36 @@ export const Settings: React.FC = () => {
                     {operatorSessionState === "authenticated" ? `Authenticated session restored. Expires ${operatorSession?.expiresAt ?? "soon"}.` : operatorSessionState === "expired" ? "Session expired. Sign in again to re-enable protected controls." : operatorSessionState === "unauthorized" ? "Operator access is unauthorized for this session." : operatorSessionMessage ?? protectedControlsReason}
                   </div>
                 </div>
+
+                <div className="bg-zinc-950 border border-orange-900/50 rounded p-4 space-y-3">
+                  <div>
+                    <span className="text-orange-400 font-bold block">Manual Binance Demo Test Trade</span>
+                    <span className="text-[10px] text-zinc-500">
+                      Opens BTCUSDT LONG on Binance Demo/Testnet using the smallest exchange-valid MARKET quantity. This bypasses scanner/signal selection only; it never targets a live Binance host.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void openManualDemoTestTrade()}
+                    disabled={!protectedControlsEnabled || backendStatus !== "Connected" || manualTestBusy}
+                    title={!protectedControlsEnabled ? protectedControlsReason : "Open minimum Binance Demo test position"}
+                    className="bg-orange-600 hover:bg-orange-700 disabled:opacity-40 text-white font-bold px-4 py-2 rounded transition-colors"
+                  >
+                    {manualTestBusy ? "OPENING DEMO TRADE..." : "OPEN MINIMUM DEMO TRADE"}
+                  </button>
+                  {manualTestError && (
+                    <div className="rounded border border-rose-900/60 bg-rose-950/25 px-3 py-2 text-[10px] text-rose-300">
+                      {manualTestError}
+                    </div>
+                  )}
+                  {manualTestResult && (
+                    <div className="rounded border border-emerald-900/60 bg-emerald-950/20 px-3 py-2 text-[10px] text-emerald-300 space-y-1">
+                      <div className="font-bold">DEMO ORDER {manualTestResult.status}</div>
+                      <div>{manualTestResult.symbol} {manualTestResult.direction} · Qty {manualTestResult.executedQuantity} · Avg ${manualTestResult.averagePrice}</div>
+                      <div className="text-zinc-400">Order ID: {manualTestResult.orderId} · Est. notional ${manualTestResult.estimatedNotionalUsdt}</div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -355,7 +408,7 @@ export const Settings: React.FC = () => {
                 <div className="bg-zinc-950 p-2.5 rounded border border-zinc-850 leading-relaxed text-zinc-400 text-[11px]"><span className="text-rose-500 font-bold">CRITICAL DEVIATION BLOCK:</span> The Risk Engine is a hardened system module and cannot be disabled. Standard risk ceilings protect perpetual accounts from liquidations during systemic market black swans.</div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div><label className="block text-zinc-400 mb-1 uppercase font-bold text-[10px]">Risk Per Trade (%):</label><input type="number" value={editableSettings.risk.riskPerTradePercent} onChange={(e) => updateField("risk", "riskPerTradePercent", parseFloat(e.target.value) || 1.0)} step="0.1" className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-white" /></div>
-                  <div><label className="block text-zinc-400 mb-1 uppercase font-bold text-[10px]">Daily Loss Limit (%):</label><input type="number" value={editableSettings.risk.dailyLossLimitPercent} onChange={(e) => updateField("risk", "dailyLossLimitPercent", parseFloat(e.target.value) || 3.0)} step="0.5" className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-white" /></div>
+                  <div><label className="block text-zinc-400 mb-1 uppercase font-bold text-[10px]">Daily Loss Limit (%):</label><input type="number" value={editableSettings.risk.dailyLossLimitPercent} onChange={(e) => updateField("risk", "risk.dailyLossLimitPercent", parseFloat(e.target.value) || 3.0)} step="0.5" className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-white" /></div>
                   <div><label className="block text-zinc-400 mb-1 uppercase font-bold text-[10px]">Daily Profit Lock (%):</label><input type="number" value={editableSettings.risk.dailyProfitLockPercent} onChange={(e) => updateField("risk", "dailyProfitLockPercent", parseFloat(e.target.value) || 5.0)} step="0.5" className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-white" /></div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
