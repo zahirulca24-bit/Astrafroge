@@ -33,6 +33,60 @@ from app.services.scanner_setups import ScannerSetupEngine
 class ScannerEngine(ScannerSetupEngine):
     """Calculate deterministic score/confidence and setup invalidation."""
 
+    def _entry_trigger(
+        self,
+        setup: ScannerSetup,
+        ctx: EvaluationContext,
+        *,
+        level: Decimal | None = None,
+    ) -> Decimal:
+        """Build the trigger from 5M setup candles; 1M/3M only confirm entry."""
+
+        direction = ctx.direction
+        e0, e1, e2 = ctx.s[0], ctx.s[1], ctx.s[2]
+        atr = _frame_value(e0, "atr14")
+        if setup is ScannerSetup.TREND_PULLBACK:
+            setup_trigger = (
+                max(e1.candle.high, e2.candle.high) + Decimal("0.05") * atr
+                if direction is ScannerDirection.LONG
+                else min(e1.candle.low, e2.candle.low) - Decimal("0.05") * atr
+            )
+        elif setup is ScannerSetup.BREAKOUT_RETEST:
+            if level is None:
+                raise ValueError("Breakout level is required")
+            setup_trigger = (
+                level + Decimal("0.05") * atr
+                if direction is ScannerDirection.LONG
+                else level - Decimal("0.05") * atr
+            )
+        elif setup in {
+            ScannerSetup.EMA_REJECTION,
+            ScannerSetup.LIQUIDITY_SWEEP_REVERSAL,
+        }:
+            setup_trigger = (
+                ctx.s[0].candle.high + Decimal("0.02") * atr
+                if direction is ScannerDirection.LONG
+                else ctx.s[0].candle.low - Decimal("0.02") * atr
+            )
+        else:
+            if level is None:
+                raise ValueError("Compression boundary is required")
+            setup_trigger = (
+                level + Decimal("0.05") * atr
+                if direction is ScannerDirection.LONG
+                else level - Decimal("0.05") * atr
+            )
+        previous_break = (
+            e1.candle.high
+            if direction is ScannerDirection.LONG
+            else e1.candle.low
+        )
+        return (
+            max(setup_trigger, previous_break)
+            if direction is ScannerDirection.LONG
+            else min(setup_trigger, previous_break)
+        )
+
     def score(
         self, ctx: EvaluationContext, match: SetupMatch, entry_ready: bool
     ) -> tuple[int, int, ScannerGrade, dict[str, Decimal]]:
@@ -175,7 +229,7 @@ class ScannerEngine(ScannerSetupEngine):
         )
         liquidity = Decimal("3") * quote_quality + Decimal("2") * spread_quality
         freshness = Decimal("5") * (
-            ctx.freshness["1h"] + ctx.freshness["15m"] + ctx.freshness["5m"]
+            ctx.freshness["15m"] + ctx.freshness["5m"] + ctx.freshness[ctx.entry_interval]
         ) / Decimal("3")
 
         components = {
@@ -192,28 +246,30 @@ class ScannerEngine(ScannerSetupEngine):
         data_completeness = sum(
             (
                 min(Decimal(ctx.counts[key]) / Decimal("250"), D1)
-                for key in ("1h", "15m", "5m")
+                for key in ("15m", "5m", ctx.entry_interval)
             ),
             D0,
         ) / Decimal("3")
-        freshness_margin = sum(ctx.freshness.values(), D0) / Decimal("3")
+        freshness_margin = (
+            ctx.freshness["15m"] + ctx.freshness["5m"] + ctx.freshness[ctx.entry_interval]
+        ) / Decimal("3")
         rule_margin = Decimal("0.60") * (match.setup_points / Decimal("25")) + Decimal(
             "0.40"
         ) * (entry / Decimal("20"))
 
-        # The first three votes are one because EvaluationContext is created only
+        # The first three votes are one because the 15M trend context is created only
         # after the exact regime EMA-stack, structure, and MACD gates pass.
-        vote_1h_ema_stack = D1
-        vote_1h_structure = D1
-        vote_1h_macd = D1
-        vote_15m_close_ema20 = Decimal(
+        vote_15m_ema_stack = D1
+        vote_15m_structure = D1
+        vote_15m_macd = D1
+        vote_5m_close_ema20 = Decimal(
             int(
                 s0.candle.close > _frame_value(s0, "ema20")
                 if direction is ScannerDirection.LONG
                 else s0.candle.close < _frame_value(s0, "ema20")
             )
         )
-        vote_15m_histogram = Decimal(
+        vote_5m_histogram = Decimal(
             int(
                 _directional_histogram(
                     _frame_value(s0, "macd_histogram"), direction
@@ -221,7 +277,7 @@ class ScannerEngine(ScannerSetupEngine):
                 > 0
             )
         )
-        vote_5m_histogram = Decimal(
+        vote_entry_histogram = Decimal(
             int(
                 _directional_histogram(
                     _frame_value(e0, "macd_histogram"), direction
@@ -230,12 +286,12 @@ class ScannerEngine(ScannerSetupEngine):
             )
         )
         votes = (
-            vote_1h_ema_stack
-            + vote_1h_structure
-            + vote_1h_macd
-            + vote_15m_close_ema20
-            + vote_15m_histogram
+            vote_15m_ema_stack
+            + vote_15m_structure
+            + vote_15m_macd
+            + vote_5m_close_ema20
             + vote_5m_histogram
+            + vote_entry_histogram
         )
         confidence_raw = (
             Decimal("25") * data_completeness
