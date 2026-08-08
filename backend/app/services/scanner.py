@@ -26,12 +26,6 @@ from app.services.scanner_base import (
 from app.services.scanner_contract import MAX_CLOCK_SKEW, QUALIFICATION_EXPIRY
 from app.services.scanner_full import ScannerFullService
 
-_TREND_INVALIDATION_CODES = {
-    "TREND_SIDEWAYS",
-    "TREND_MIXED",
-    "TREND_DIRECTION_MISMATCH",
-}
-
 
 class ScannerService(ScannerFullService):
     """Complete deterministic Scanner Engine Runtime."""
@@ -98,18 +92,10 @@ class ScannerService(ScannerFullService):
                             current_fast_e,
                             counts,
                             freshness,
-                            structure,
                         ) = await self._load_refresh_inputs(
                             candidate.symbol,
                             exchange_time,
                         )
-                        current_direction = self._engine.regime(current_h, structure)
-                        if current_direction is not candidate.direction:
-                            raise ScannerEvaluationError(
-                                "TREND_DIRECTION_MISMATCH",
-                                "Current 15M trend conflicts with candidate direction",
-                                "15m",
-                            )
                         self._engine.volatility(current_s[0], "5m")
                         self._engine.volatility(current_e[0], "3m")
                         self._engine.volatility(current_fast_e[0], "1m")
@@ -222,25 +208,6 @@ class ScannerService(ScannerFullService):
                         run.successful_symbols += 1
                         run.updated_candidates += 1
                     except ScannerEvaluationError as exc:
-                        if exc.code in _TREND_INVALIDATION_CODES:
-                            self._terminal(
-                                candidate,
-                                CandidateLifecycle.INVALIDATED,
-                                "CANDIDATE_INVALIDATED",
-                                exchange_time,
-                            )
-                            audits.append(
-                                ScannerAuditRecord(
-                                    code=exc.code,
-                                    detail=exc.detail,
-                                    symbol=candidate.symbol,
-                                    direction=candidate.direction,
-                                    setup=candidate.setup,
-                                    timeframe=exc.timeframe,
-                                )
-                            )
-                            run.successful_symbols += 1
-                            continue
                         if self._expiry_reached(candidate, exchange_time):
                             self._terminal(
                                 candidate,
@@ -311,12 +278,10 @@ class ScannerService(ScannerFullService):
         list[Frame],
         dict[str, int],
         dict[str, Decimal],
-        str,
     ]:
         frames: dict[str, list[Frame]] = {}
         counts: dict[str, int] = {}
         freshness: dict[str, Decimal] = {}
-        structure = "insufficient_data"
         for interval in ("15m", "5m", "3m", "1m"):
             candles = await self._market.candles(symbol, interval, 250)
             indicators = await self._indicators.build(symbol, interval, 250)
@@ -328,8 +293,6 @@ class ScannerService(ScannerFullService):
             frames[interval] = aligned
             counts[interval] = min(len(candles.candles), len(indicators.points))
             freshness[interval] = ratio
-            if interval == "15m":
-                structure = indicators.structure.state
         return (
             frames["15m"],
             frames["5m"],
@@ -345,7 +308,6 @@ class ScannerService(ScannerFullService):
                 "15m": freshness["5m"],
                 "5m": min(freshness["3m"], freshness["1m"]),
             },
-            structure,
         )
 
     @staticmethod

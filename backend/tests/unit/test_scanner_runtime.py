@@ -389,7 +389,7 @@ def test_evaluate_symbol_lifecycle_boundaries(
 
         service._load_context = MethodType(load, service)  # type: ignore[method-assign]
         service._engine.evaluate_setups = (  # type: ignore[method-assign]
-            lambda loaded: ([match], [])
+            lambda loaded: ([match], []) if loaded.direction is ctx.direction else ([], [])
         )
         service._engine.shared_entry = (  # type: ignore[method-assign]
             lambda e, direction, trigger: entry_ready
