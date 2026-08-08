@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -43,15 +44,23 @@ _SYMBOL_DATA_FAILURE_CODES = {
     "MISSING_1H_CANDLES",
     "MISSING_15M_CANDLES",
     "MISSING_5M_CANDLES",
+    "MISSING_3M_CANDLES",
+    "MISSING_1M_CANDLES",
     "INSUFFICIENT_1H_HISTORY",
     "INSUFFICIENT_15M_HISTORY",
     "INSUFFICIENT_5M_HISTORY",
+    "INSUFFICIENT_3M_HISTORY",
+    "INSUFFICIENT_1M_HISTORY",
     "STALE_1H_DATA",
     "STALE_15M_DATA",
     "STALE_5M_DATA",
+    "STALE_3M_DATA",
+    "STALE_1M_DATA",
     "INVALID_1H_OHLCV",
     "INVALID_15M_OHLCV",
     "INVALID_5M_OHLCV",
+    "INVALID_3M_OHLCV",
+    "INVALID_1M_OHLCV",
     "MISSING_REQUIRED_INDICATOR",
     "INDICATOR_CALCULATION_FAILED",
     "STRUCTURE_INSUFFICIENT",
@@ -298,7 +307,7 @@ class ScannerFullService(ScannerRuntimeBase):
         freshness: dict[str, Decimal] = {}
         counts: dict[str, int] = {}
         structures: dict[str, str] = {}
-        for interval in ("1h", "15m", "5m"):
+        for interval in ("15m", "5m", "1m", "3m"):
             candles = await self._market.candles(universe.symbol, interval, 250)
             indicators = await self._indicators.build(universe.symbol, interval, 250)
             aligned, freshness_ratio = self._engine.align(
@@ -310,18 +319,19 @@ class ScannerFullService(ScannerRuntimeBase):
             freshness[interval] = freshness_ratio
             counts[interval] = min(len(candles.candles), len(indicators.points))
             structures[interval] = indicators.structure.state
-        direction = self._engine.regime(frames["1h"], structures["1h"])
-        self._engine.volatility(frames["15m"][0], "15m")
+        direction = self._engine.regime(frames["15m"], structures["15m"], "15m")
         self._engine.volatility(frames["5m"][0], "5m")
         return EvaluationContext(
             direction=direction,
-            h=frames["1h"],
-            s=frames["15m"],
-            e=frames["5m"],
+            h=frames["15m"],
+            s=frames["5m"],
+            e=frames["1m"],
             universe=universe,
             exchange_time=exchange_time,
             counts=counts,
             freshness=freshness,
+            e_alt=frames["3m"],
+            entry_interval="1m",
         )
 
     async def _evaluate_symbol(
@@ -343,7 +353,7 @@ class ScannerFullService(ScannerRuntimeBase):
                 symbol=universe.symbol,
                 universe_rank=universe.rank,
                 direction=context.direction,
-                timeframe=failure.timeframe or "15m",
+                timeframe="5m",
             )
             for failure in setup_failures
         ]
@@ -355,7 +365,7 @@ class ScannerFullService(ScannerRuntimeBase):
                     symbol=universe.symbol,
                     universe_rank=universe.rank,
                     direction=context.direction,
-                    timeframe="15m",
+                    timeframe="5m",
                 )
             )
             return None, audits, context
@@ -385,17 +395,25 @@ class ScannerFullService(ScannerRuntimeBase):
         match: SetupMatch,
         run_id: str,
     ) -> ScannerCandidate:
-        entry_ready = (
-            context.e[0].candle.close_time > match.setup_confirmed_at
-            and context.exchange_time < match.expires_at
-            and self._engine.shared_entry(
-                context.e,
-                context.direction,
-                match.entry_trigger_price,
-            )
-        )
+        entry_context = context
+        entry_ready = False
+        entry_choices = [("1m", context.e), ("3m", context.e_alt or [])]
+        for interval, frames in entry_choices:
+            if (
+                len(frames) >= 2
+                and frames[0].candle.close_time > match.setup_confirmed_at
+                and context.exchange_time < match.expires_at
+                and self._engine.shared_entry(
+                    frames,
+                    context.direction,
+                    match.entry_trigger_price,
+                )
+            ):
+                entry_context = replace(context, e=frames, entry_interval=interval)
+                entry_ready = True
+                break
         score, confidence, grade, components = self._engine.score(
-            context,
+            entry_context,
             match,
             entry_ready,
         )
@@ -434,6 +452,7 @@ class ScannerFullService(ScannerRuntimeBase):
 
         evidence = dict(match.evidence)
         evidence["source_run_id"] = run_id
+        evidence["entry_interval"] = entry_context.entry_interval
         return ScannerCandidate(
             candidate_id=_candidate_key(
                 context.universe.symbol,
@@ -449,7 +468,7 @@ class ScannerFullService(ScannerRuntimeBase):
             setup_confirmed_at=match.setup_confirmed_at,
             expires_at=match.expires_at,
             qualification_expires_at=(
-                context.e[0].candle.close_time + QUALIFICATION_EXPIRY
+                entry_context.e[0].candle.close_time + QUALIFICATION_EXPIRY
                 if lifecycle is CandidateLifecycle.QUALIFIED
                 else None
             ),
