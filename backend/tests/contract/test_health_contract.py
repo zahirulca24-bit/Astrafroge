@@ -88,5 +88,6 @@ def test_openapi_contains_verified_runtime_routes(client: TestClient) -> None:
         "/api/v1/trade-management/close/{trade_id}",
         "/api/v1/trade-management/status",
         "/api/v1/trade-management/trades",
+        "/api/v1/trade-management/trades-journal",
         "/api/v1/universe",
     }
