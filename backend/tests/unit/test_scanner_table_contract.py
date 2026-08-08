@@ -91,3 +91,42 @@ def test_latest_table_rows_cover_ready_near_rejected_and_failed() -> None:
     assert snapshot.summary.near_setup == 1
     assert snapshot.summary.rejected == 1
     assert snapshot.summary.failed == 1
+    xrp = next(row for row in snapshot.rows if row.symbol == "XRPUSDT")
+    assert xrp.trend_1h == "Sideways"
+    assert xrp.setup_15m == "Not evaluated"
+    assert xrp.entry_5m == "Not evaluated"
+
+
+def test_latest_table_marks_15m_no_setup_only_after_setup_evaluation() -> None:
+    run = ScannerRunSummary(
+        run_id="run-1",
+        run_type=ScannerRunType.FULL_UNIVERSE_SCAN,
+        status=ScannerRunStatus.COMPLETED,
+        run_started_at=NOW,
+        evaluated_symbols=1,
+        successful_symbols=1,
+        audits=[
+            ScannerAuditRecord(
+                code="PULLBACK_SEQUENCE_FAILED",
+                detail="Three-candle pullback sequence failed",
+                symbol="SOLUSDT",
+                universe_rank=1,
+                direction=ScannerDirection.LONG,
+                timeframe="15m",
+            ),
+            ScannerAuditRecord(
+                code="SETUP_NOT_DETECTED",
+                detail="No approved deterministic setup matched",
+                symbol="SOLUSDT",
+                universe_rank=1,
+                direction=ScannerDirection.LONG,
+                timeframe="15m",
+            ),
+        ],
+    )
+    service = SimpleNamespace(_runs=[run], candidates=lambda: [])
+
+    snapshot = _scanner_table_snapshot(service)
+
+    assert snapshot.rows[0].setup_15m == "No setup"
+    assert snapshot.rows[0].entry_5m == "Not evaluated"
