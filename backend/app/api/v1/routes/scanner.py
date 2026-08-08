@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from app.api.v1.dependencies import get_scanner_service
 from app.core.security import MutationAuthorization, authorize_mutation
@@ -51,6 +52,15 @@ _SYMBOL_DATA_FAILURE_CODES = {
     "STRUCTURE_INSUFFICIENT",
     "UNIVERSE_ELIGIBILITY_FAILED",
 }
+
+
+class ScannerRunRequestResponse(BaseModel):
+    """Immediate acknowledgement for a non-blocking manual full-scan request."""
+
+    accepted: bool
+    run_active: bool
+    message: str
+    latest_run: ScannerRunSummary | None = None
 
 
 def _latest_full_run(service: ScannerService) -> ScannerRunSummary | None:
@@ -248,9 +258,39 @@ async def scanner_run_now(
     service: ScannerService = Depends(get_scanner_service),  # noqa: B008
     _authorization: MutationAuthorization = Depends(authorize_mutation),  # noqa: B008
 ) -> ScannerRunSummary:
-    """Run one authorized Full Universe Scan without changing ON/OFF state."""
+    """Backward-compatible blocking manual Full Universe Scan endpoint."""
 
     return await service.run_now()
+
+
+@router.post(
+    "/run-now/request",
+    response_model=ScannerRunRequestResponse,
+    status_code=202,
+)
+async def scanner_request_run_now(
+    background_tasks: BackgroundTasks,
+    service: ScannerService = Depends(get_scanner_service),  # noqa: B008
+    _authorization: MutationAuthorization = Depends(authorize_mutation),  # noqa: B008
+) -> ScannerRunRequestResponse:
+    """Queue one manual Full Universe Scan and acknowledge without holding the HTTP request."""
+
+    status = service.status()
+    if status.run_active:
+        return ScannerRunRequestResponse(
+            accepted=False,
+            run_active=True,
+            message="A Scanner run is already active; no duplicate run was queued.",
+            latest_run=status.latest_run,
+        )
+
+    background_tasks.add_task(service.run_now)
+    return ScannerRunRequestResponse(
+        accepted=True,
+        run_active=True,
+        message="Full Universe Scan accepted and queued for background execution.",
+        latest_run=status.latest_run,
+    )
 
 
 @router.get("/evaluations/latest", response_model=ScannerTableSnapshot)
