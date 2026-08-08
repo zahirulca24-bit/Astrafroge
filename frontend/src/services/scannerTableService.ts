@@ -7,9 +7,9 @@ export interface ScannerTableRow {
   symbol: string;
   direction: "LONG" | "SHORT" | null;
   setupName: string | null;
-  trend1h: string;
-  setup15m: string;
-  entry5m: string;
+  trend15m: string;
+  setup5m: string;
+  entry1m3m: string;
   grade: "A+" | "A" | "B+" | "Reject" | null;
   score: number | null;
   confidence: number | null;
@@ -84,9 +84,11 @@ export const scannerTableService = {
         symbol: raw.symbol,
         direction,
         setupName: optionalString(raw.setup_name),
-        trend1h: optionalString(raw.trend_1h) ?? "Unavailable",
-        setup15m: optionalString(raw.setup_15m) ?? "Unavailable",
-        entry5m: optionalString(raw.entry_5m) ?? "Unavailable",
+        // Backend keeps these wire keys for compatibility. Their semantics now follow
+        // the scalping workflow: 15M trend -> 5M setup -> 1M/3M entry.
+        trend15m: optionalString(raw.trend_1h) ?? "Unavailable",
+        setup5m: optionalString(raw.setup_15m) ?? "Unavailable",
+        entry1m3m: optionalString(raw.entry_5m) ?? "Unavailable",
         grade,
         score: optionalNumber(raw.score),
         confidence: optionalNumber(raw.confidence),
