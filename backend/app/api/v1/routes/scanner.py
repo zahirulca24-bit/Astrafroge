@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from time import perf_counter
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 
 from app.api.v1.dependencies import get_scanner_service
 from app.core.security import MutationAuthorization, authorize_mutation
@@ -245,12 +246,18 @@ async def scanner_stop(
 
 @router.post("/run-now", response_model=ScannerRunSummary)
 async def scanner_run_now(
+    response: Response,
     service: ScannerService = Depends(get_scanner_service),  # noqa: B008
     _authorization: MutationAuthorization = Depends(authorize_mutation),  # noqa: B008
 ) -> ScannerRunSummary:
-    """Run one authorized Full Universe Scan without changing ON/OFF state."""
+    """Run one authorized Full Universe Scan and expose its measured server duration."""
 
-    return await service.run_now()
+    started = perf_counter()
+    run = await service.run_now()
+    elapsed_ms = max(0.0, (perf_counter() - started) * 1000)
+    response.headers["Server-Timing"] = f"scanner;dur={elapsed_ms:.1f}"
+    response.headers["X-Scanner-Duration-Ms"] = f"{elapsed_ms:.1f}"
+    return run
 
 
 @router.get("/evaluations/latest", response_model=ScannerTableSnapshot)
