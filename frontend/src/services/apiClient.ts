@@ -13,6 +13,7 @@
  */
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
+const SCANNER_RUN_REQUEST_TIMEOUT_MS = 120000;
 
 export interface ApiRequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -193,7 +194,9 @@ export const apiClient = {
       idempotencyKey,
       body,
       headers = {},
-      timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+      timeoutMs = path === "/api/v1/scanner/run-now"
+        ? SCANNER_RUN_REQUEST_TIMEOUT_MS
+        : DEFAULT_REQUEST_TIMEOUT_MS,
       signal: externalSignal,
     } = options;
 
